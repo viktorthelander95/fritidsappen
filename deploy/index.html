@@ -223,6 +223,18 @@ const emptySchedule = () => ({ mon: { time: "", comment: "" }, tue: { time: "", 
 const getSchedule = (child) => child.weeklySchedule || emptySchedule();
 const todayDayId = () => { const d = new Date().getDay(); return ["sun","mon","tue","wed","thu","fri","sat"][d]; };
 
+// ── Belöningssystem helpers ──
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const yesterdayStr = () => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); };
+const calcStreak = (child) => {
+  const today = todayStr();
+  if (child.lastStreakDate === today) return { streak: child.streak || 0, lastStreakDate: today, changed: false };
+  const yesterday = yesterdayStr();
+  const newStreak = child.lastStreakDate === yesterday ? (child.streak || 0) + 1 : 1;
+  return { streak: newStreak, lastStreakDate: today, changed: true };
+};
+const streakEmoji = (n) => n >= 7 ? "💎" : n >= 5 ? "🔥" : n >= 3 ? "⭐" : "✨";
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SHARED STYLES
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -398,6 +410,13 @@ function ChildView({ user, allChildren, setAllChildren }) {
   const [showReminder, setShowReminder] = useState(false);
   const [showGoHome, setShowGoHome] = useState(false);
   const [checkInAnim, setCheckInAnim] = useState(false);
+  const [coinAnim, setCoinAnim] = useState(null); // "maxi" | "fritids" | "streak"
+  const [showWallet, setShowWallet] = useState(false);
+
+  // Belöningsdata (med default-värden)
+  const maxiKronor = liveUser.maxiKronor || 0;
+  const fritidsKronor = liveUser.fritidsKronor || 0;
+  const streak = liveUser.streak || 0;
 
   // Sync room from live data (pedagogue might move child)
   useEffect(() => { setCurrentRoom(liveUser.room); }, [liveUser.room]);
@@ -409,14 +428,21 @@ function ChildView({ user, allChildren, setAllChildren }) {
     } else setShowReminder(false);
   }, [currentRoom, liveUser.status]);
 
+  const triggerCoinAnim = (type) => {
+    setCoinAnim(type);
+    setTimeout(() => setCoinAnim(null), 2200);
+  };
+
   const handleCheckIn = () => {
     setCheckInAnim(true);
-    setAllChildren((prev) => prev.map((c) => c.id === user.id ? { ...c, status: "incheckad", checkedInAt: Date.now(), checkedOutAt: null, room: null, updatedAt: null } : c));
+    setAllChildren((prev) => prev.map((c) => c.id === user.id ? { ...c, status: "incheckad", checkedInAt: Date.now(), checkedOutAt: null, room: null, updatedAt: null, maxiKronor: (c.maxiKronor || 0) + 1 } : c));
+    triggerCoinAnim("maxi");
     setTimeout(() => setCheckInAnim(false), 2000);
   };
 
   const handleGoHome = () => {
-    setAllChildren((prev) => prev.map((c) => c.id === user.id ? { ...c, status: "gått_hem", checkedOutAt: Date.now(), room: null, updatedAt: Date.now() } : c));
+    setAllChildren((prev) => prev.map((c) => c.id === user.id ? { ...c, status: "gått_hem", checkedOutAt: Date.now(), room: null, updatedAt: Date.now(), maxiKronor: (c.maxiKronor || 0) + 1 } : c));
+    triggerCoinAnim("maxi");
     setCurrentRoom(null);
     setShowGoHome(false);
   };
@@ -424,7 +450,12 @@ function ChildView({ user, allChildren, setAllChildren }) {
   const placeAvatar = (roomId) => {
     setCurrentRoom(roomId);
     setConfirmAnim(roomId);
-    setAllChildren((prev) => prev.map((c) => c.id === user.id ? { ...c, room: roomId, updatedAt: Date.now() } : c));
+    setAllChildren((prev) => prev.map((c) => {
+      if (c.id !== user.id) return c;
+      const s = calcStreak(c);
+      return { ...c, room: roomId, updatedAt: Date.now(), streak: s.streak, lastStreakDate: s.lastStreakDate };
+    }));
+    triggerCoinAnim("streak");
     setTimeout(() => setConfirmAnim(null), 1800);
   };
 
@@ -452,17 +483,60 @@ function ChildView({ user, allChildren, setAllChildren }) {
           ) : (
             <p style={{ color: "#64748b", fontSize: 15, margin: "0 0 28px" }}>Välkommen till fritids! Tryck för att checka in.</p>
           )}
+          {/* 🏆 Belöningsöversikt */}
+          <div style={{ display: "flex", gap: 10, justifyContent: "center", marginBottom: 20 }}>
+            <div style={{ background: "white", borderRadius: 16, padding: "10px 16px", boxShadow: "0 2px 10px rgba(0,0,0,0.06)", display: "flex", alignItems: "center", gap: 8, border: "2px solid #fcd34d" }}>
+              <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg, #fbbf24, #f59e0b)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 900, color: "white", boxShadow: "0 2px 6px rgba(245,158,11,0.4)" }}>M</div>
+              <div style={{ textAlign: "left" }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: "#92400e" }}>{maxiKronor}</div>
+                <div style={{ fontSize: 9, color: "#b45309", fontWeight: 700 }}>MAXI-KRONOR</div>
+              </div>
+            </div>
+            <div style={{ background: "white", borderRadius: 16, padding: "10px 16px", boxShadow: "0 2px 10px rgba(0,0,0,0.06)", display: "flex", alignItems: "center", gap: 8, border: "2px solid #a78bfa" }}>
+              <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 900, color: "white", boxShadow: "0 2px 6px rgba(139,92,246,0.4)" }}>F</div>
+              <div style={{ textAlign: "left" }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: "#5b21b6" }}>{fritidsKronor}</div>
+                <div style={{ fontSize: 9, color: "#6d28d9", fontWeight: 700 }}>FRITIDS-KRONOR</div>
+              </div>
+            </div>
+          </div>
+          {streak > 0 && (
+            <div style={{ background: "linear-gradient(135deg, #fef3c7, #fde68a)", borderRadius: 14, padding: "8px 16px", marginBottom: 20, display: "inline-flex", alignItems: "center", gap: 6, border: "2px solid #fbbf24" }}>
+              <span style={{ fontSize: 18 }}>{streakEmoji(streak)}</span>
+              <span style={{ fontWeight: 800, fontSize: 15, color: "#92400e" }}>{streak} dagars streak!</span>
+              <span style={{ fontSize: 18 }}>{streakEmoji(streak)}</span>
+            </div>
+          )}
+
           <button onClick={handleCheckIn}
             style={{ width: "100%", padding: "20px 24px", borderRadius: 24, border: "none", background: "linear-gradient(135deg, #10b981, #059669)", color: "white", fontSize: 22, fontWeight: 800, cursor: "pointer", fontFamily: font, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, boxShadow: "0 8px 24px rgba(16,185,129,0.3)", transition: "transform 0.2s" }}>
             ✅ {isGoneHome ? "Checka in igen" : "Jag är här!"}
           </button>
-          <div style={{ marginTop: 16, fontSize: 12, color: "#cbd5e1" }}>
+          <div style={{ marginTop: 8, fontSize: 12, color: "#10b981", fontWeight: 600 }}>
+            +1 Maxi-krona vid incheckning!
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12, color: "#cbd5e1" }}>
             {av(user.avatar).emoji} {user.code}
           </div>
         </div>
 
+        {/* Coin animation overlay */}
+        {coinAnim && (
+          <div style={{ position: "fixed", top: "40%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 999, pointerEvents: "none", animation: "coinFloat 2s ease-out forwards" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+              <div style={{ width: 64, height: 64, borderRadius: "50%", background: coinAnim === "maxi" ? "linear-gradient(135deg, #fbbf24, #f59e0b)" : coinAnim === "streak" ? "linear-gradient(135deg, #f59e0b, #ef4444)" : "linear-gradient(135deg, #8b5cf6, #7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 900, color: "white", boxShadow: coinAnim === "maxi" ? "0 4px 20px rgba(245,158,11,0.5)" : coinAnim === "streak" ? "0 4px 20px rgba(239,68,68,0.5)" : "0 4px 20px rgba(139,92,246,0.5)", animation: "bounceIn 0.4s ease-out" }}>
+                {coinAnim === "maxi" ? "M" : coinAnim === "streak" ? "🔥" : "F"}
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: coinAnim === "maxi" ? "#92400e" : coinAnim === "streak" ? "#dc2626" : "#5b21b6", textShadow: "0 2px 8px rgba(255,255,255,0.8)" }}>
+                {coinAnim === "maxi" ? "+1 Maxi-krona!" : coinAnim === "streak" ? `${streakEmoji(streak)} Streak ${streak}!` : "+1 Fritids-krona!"}
+              </div>
+            </div>
+          </div>
+        )}
+
         <style>{`
           @keyframes bounceIn { 0% { transform: scale(0); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
+          @keyframes coinFloat { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } 30% { transform: translate(-50%, -50%) scale(1); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -100%) scale(0.8); } }
         `}</style>
       </div>
     );
@@ -489,6 +563,23 @@ function ChildView({ user, allChildren, setAllChildren }) {
               <div style={{ fontSize: 13, color: roomObj?.color, fontWeight: 600 }}>{roomObj?.icon} {roomObj?.name}</div>
             ) : (
               <div style={{ fontSize: 13, color: "#f59e0b", fontWeight: 600 }}>Dra mig till ett rum! 👇</div>
+            )}
+          </div>
+          {/* Rewards mini */}
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <div title="Maxi-kronor" style={{ display: "flex", alignItems: "center", gap: 2, background: "#fffbeb", padding: "3px 8px", borderRadius: 10, border: "1px solid #fcd34d" }}>
+              <div style={{ width: 18, height: 18, borderRadius: "50%", background: "linear-gradient(135deg, #fbbf24, #f59e0b)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 900, color: "white" }}>M</div>
+              <span style={{ fontSize: 12, fontWeight: 800, color: "#92400e" }}>{maxiKronor}</span>
+            </div>
+            <div title="Fritids-kronor" style={{ display: "flex", alignItems: "center", gap: 2, background: "#f5f3ff", padding: "3px 8px", borderRadius: 10, border: "1px solid #a78bfa" }}>
+              <div style={{ width: 18, height: 18, borderRadius: "50%", background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 900, color: "white" }}>F</div>
+              <span style={{ fontSize: 12, fontWeight: 800, color: "#5b21b6" }}>{fritidsKronor}</span>
+            </div>
+            {streak > 0 && (
+              <div title={`${streak} dagars streak`} style={{ display: "flex", alignItems: "center", gap: 2, background: "#fef2f2", padding: "3px 8px", borderRadius: 10, border: "1px solid #fca5a5" }}>
+                <span style={{ fontSize: 12 }}>{streakEmoji(streak)}</span>
+                <span style={{ fontSize: 12, fontWeight: 800, color: "#dc2626" }}>{streak}</span>
+              </div>
             )}
           </div>
           {/* Go home button */}
@@ -570,9 +661,13 @@ function ChildView({ user, allChildren, setAllChildren }) {
           <div style={{ ...card({ maxWidth: 360, width: "100%", borderRadius: 28, padding: "32px 28px", textAlign: "center" }) }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontSize: 56, marginBottom: 12 }}>🏠</div>
             <h3 style={{ fontSize: 22, fontWeight: 800, color: "#1e293b", margin: "0 0 8px" }}>Dags att gå hem?</h3>
-            <p style={{ fontSize: 14, color: "#64748b", margin: "0 0 24px" }}>
+            <p style={{ fontSize: 14, color: "#64748b", margin: "0 0 8px" }}>
               Du checkas ut kl. {new Date().toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}
             </p>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fffbeb", borderRadius: 10, padding: "6px 14px", marginBottom: 16, border: "1px solid #fcd34d" }}>
+              <div style={{ width: 20, height: 20, borderRadius: "50%", background: "linear-gradient(135deg, #fbbf24, #f59e0b)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 900, color: "white" }}>M</div>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>+1 Maxi-krona!</span>
+            </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setShowGoHome(false)} style={{ flex: 1, padding: 14, borderRadius: 16, border: "1px solid #e2e8f0", background: "white", fontWeight: 600, fontSize: 15, cursor: "pointer", fontFamily: font, color: "#64748b" }}>
                 Nej, stanna
@@ -585,10 +680,25 @@ function ChildView({ user, allChildren, setAllChildren }) {
         </div>
       )}
 
+      {/* Coin animation overlay (checked-in view) */}
+      {coinAnim && (
+        <div style={{ position: "fixed", top: "40%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 999, pointerEvents: "none", animation: "coinFloat 2s ease-out forwards" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+            <div style={{ width: 64, height: 64, borderRadius: "50%", background: coinAnim === "maxi" ? "linear-gradient(135deg, #fbbf24, #f59e0b)" : coinAnim === "streak" ? "linear-gradient(135deg, #f59e0b, #ef4444)" : "linear-gradient(135deg, #8b5cf6, #7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 900, color: "white", boxShadow: "0 4px 20px rgba(0,0,0,0.2)", animation: "bounceIn 0.4s ease-out" }}>
+              {coinAnim === "maxi" ? "M" : coinAnim === "streak" ? "🔥" : "F"}
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: coinAnim === "maxi" ? "#92400e" : coinAnim === "streak" ? "#dc2626" : "#5b21b6", textShadow: "0 2px 8px rgba(255,255,255,0.8)" }}>
+              {coinAnim === "maxi" ? "+1 Maxi-krona!" : coinAnim === "streak" ? `${streakEmoji(streak)} Streak ${streak}!` : "+1 Fritids-krona!"}
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         @keyframes bounceIn { 0% { transform: scale(0); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
         @keyframes slideDown { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         @keyframes fadeInOut { 0% { opacity: 0; } 15% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
+        @keyframes coinFloat { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } 30% { transform: translate(-50%, -50%) scale(1); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -100%) scale(0.8); } }
       `}</style>
     </div>
   );
@@ -1108,6 +1218,26 @@ function PedagogueView({ allChildren, setAllChildren, onLogout }) {
                         <span style={{ fontSize: 11, color: "#8B5CF6", fontWeight: 700, background: "#f5f3ff", padding: "2px 8px", borderRadius: 6, fontFamily: "monospace" }}>{child.code}</span>
                         <span style={{ fontSize: 11, color: sb.color, fontWeight: 600, background: sb.bg, padding: "2px 8px", borderRadius: 6 }}>{sb.icon} {sb.label}</span>
                       </div>
+                      {/* Belöningar */}
+                      <div style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 3 }}>
+                        {(child.maxiKronor || 0) > 0 && (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 10, background: "#fffbeb", padding: "1px 6px", borderRadius: 6, border: "1px solid #fcd34d", fontWeight: 700, color: "#92400e" }}>
+                            <span style={{ width: 12, height: 12, borderRadius: "50%", background: "linear-gradient(135deg, #fbbf24, #f59e0b)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 6, fontWeight: 900, color: "white" }}>M</span>
+                            {child.maxiKronor}
+                          </span>
+                        )}
+                        {(child.fritidsKronor || 0) > 0 && (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 10, background: "#f5f3ff", padding: "1px 6px", borderRadius: 6, border: "1px solid #a78bfa", fontWeight: 700, color: "#5b21b6" }}>
+                            <span style={{ width: 12, height: 12, borderRadius: "50%", background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 6, fontWeight: 900, color: "white" }}>F</span>
+                            {child.fritidsKronor}
+                          </span>
+                        )}
+                        {(child.streak || 0) > 0 && (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 10, background: "#fef2f2", padding: "1px 6px", borderRadius: 6, border: "1px solid #fca5a5", fontWeight: 700, color: "#dc2626" }}>
+                            {streakEmoji(child.streak)} {child.streak}d
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
@@ -1254,7 +1384,7 @@ function ParentView({ parent, allChildren, setAllChildren }) {
 
   const handleParentCheckout = () => {
     if (!foundChild) return;
-    setAllChildren((prev) => prev.map((c) => c.id === foundChild.id ? { ...c, status: "gått_hem", checkedOutAt: Date.now(), room: null, updatedAt: Date.now() } : c));
+    setAllChildren((prev) => prev.map((c) => c.id === foundChild.id ? { ...c, status: "gått_hem", checkedOutAt: Date.now(), room: null, updatedAt: Date.now(), fritidsKronor: (c.fritidsKronor || 0) + 1 } : c));
     setConfirmCheckout(false);
   };
 
