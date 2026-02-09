@@ -1,0 +1,1627 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fritidsappen - Pilot</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Nunito', 'Segoe UI', system-ui, sans-serif; }
+    @keyframes slideDown { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-type="module">
+
+const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const ROOMS = [
+  { id: "y-rummet", name: "Y-rummet", zone: "skapande", color: "#F59E0B", bg: "#FEF3C7", icon: "🎨", activities: ["Måla", "Läsa bok", "Brädspel"], desc: "Kreativt rum för målning, läsning och spel" },
+  { id: "x-rummet", name: "X-rummet", zone: "skapande", color: "#EF4444", bg: "#FEE2E2", icon: "✂️", activities: ["Måla", "Limma", "Vattenfärg", "Kartongbygge"], desc: "Konstnärlig verkstad med färg och material" },
+  { id: "pysselrummet", name: "Pysselrummet", zone: "skapande", color: "#8B5CF6", bg: "#EDE9FE", icon: "📿", activities: ["Pärla", "Origami", "How-to-draw"], desc: "Pyssel med pärlor, papper och teckning" },
+  { id: "byggrummet", name: "Byggrummet", zone: "bygg", color: "#3B82F6", bg: "#DBEAFE", icon: "🧱", activities: ["Lego", "Kapla", "PlusPlus", "Magnetbygge", "Dominos"], desc: "Bygg och konstruera med olika material" },
+  { id: "idrottshallen", name: "Idrottshallen", zone: "rörelse", color: "#10B981", bg: "#D1FAE5", icon: "🏃", activities: ["Gymnastik", "Jage-lek", "Bollsport", "Racketsport"], desc: "Stor hall för sport och rörelse" },
+  { id: "pingisrummet", name: "Pingisrummet", zone: "rörelse", color: "#14B8A6", bg: "#CCFBF1", icon: "🏓", activities: ["Pingis"], desc: "Dedikerat rum för bordtennis" },
+  { id: "dansrummet", name: "Dansrummet", zone: "rörelse", color: "#EC4899", bg: "#FCE7F3", icon: "💃", activities: ["Just Dance", "Karaoke"], desc: "Dans och musik" },
+  { id: "fotbollsplanen", name: "Fotbollsplanen", zone: "utomhus", color: "#65A30D", bg: "#ECFCCB", icon: "⚽", activities: ["Fotboll"], desc: "Utomhusplan för fotboll" },
+  { id: "utomhus", name: "Utomhus", zone: "utomhus", color: "#0EA5E9", bg: "#E0F2FE", icon: "🌳", activities: ["Kingplan", "Skog", "Klätterställning"], desc: "Utomhuslek" },
+  { id: "soffan", name: "Soffan", zone: "vila", color: "#D97706", bg: "#FEF9C3", icon: "🛋️", activities: ["Vila", "Rekreation"], desc: "Lugn plats för vila" },
+];
+
+const ZONES = {
+  skapande: { label: "Skapande", color: "#F59E0B", icon: "🎨" },
+  bygg: { label: "Bygg & Konstruktion", color: "#3B82F6", icon: "🧱" },
+  rörelse: { label: "Rörelse & Sport", color: "#10B981", icon: "🏃" },
+  utomhus: { label: "Utomhus", color: "#0EA5E9", icon: "🌳" },
+  vila: { label: "Vila", color: "#D97706", icon: "🛋️" },
+};
+
+const AVATARS = [
+  { id: "cat", emoji: "🐱", label: "Katt" }, { id: "dog", emoji: "🐶", label: "Hund" },
+  { id: "bunny", emoji: "🐰", label: "Kanin" }, { id: "bear", emoji: "🐻", label: "Björn" },
+  { id: "fox", emoji: "🦊", label: "Räv" }, { id: "panda", emoji: "🐼", label: "Panda" },
+  { id: "lion", emoji: "🦁", label: "Lejon" }, { id: "unicorn", emoji: "🦄", label: "Enhörning" },
+  { id: "frog", emoji: "🐸", label: "Groda" }, { id: "owl", emoji: "🦉", label: "Uggla" },
+  { id: "penguin", emoji: "🐧", label: "Pingvin" }, { id: "dolphin", emoji: "🐬", label: "Delfin" },
+];
+
+// Status: "ej_incheckad" | "incheckad" | "gått_hem"
+const INITIAL_CHILDREN = [
+  { id: "c1", name: "Jürgen Abed", avatar: "cat", group: "KAL-17", room: null, birthYear: "17", code: "JA17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c2", name: "Lea Ademi", avatar: "dog", group: "KAL-17", room: null, birthYear: "17", code: "LA171", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c3", name: "Noah Ahlcrona", avatar: "bunny", group: "KAL-17", room: null, birthYear: "17", code: "NA17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c4", name: "Sharjeel Ahmad", avatar: "bear", group: "KAL-15", room: null, birthYear: "15", code: "SA151", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c5", name: "Khalid Nasir Ahmed", avatar: "fox", group: "KAL-15", room: null, birthYear: "15", code: "KNA15", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c6", name: "Leanah Al-Barzingi", avatar: "panda", group: "KAL-15", room: null, birthYear: "15", code: "LA15", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c7", name: "Leyla Al-Oleiw", avatar: "lion", group: "KAL-17", room: null, birthYear: "17", code: "LA172", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c8", name: "Sophie Al-Oleiw", avatar: "unicorn", group: "KAL-15", room: null, birthYear: "15", code: "SA152", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c9", name: "Emelie Anusic", avatar: "frog", group: "KAL-14", room: null, birthYear: "14", code: "EA14", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c10", name: "Nina Astorga", avatar: "owl", group: "KAL-16", room: null, birthYear: "16", code: "NA16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c11", name: "Alexander Attergran", avatar: "penguin", group: "KAL-16", room: null, birthYear: "16", code: "AA16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c12", name: "Sofia Victoria Bachini Garcete", avatar: "dolphin", group: "KAL-16", room: null, birthYear: "16", code: "SVBG16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c13", name: "Elias Bayati", avatar: "cat", group: "KAL-17", room: null, birthYear: "17", code: "EB17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c14", name: "Benjamin Bengtsson Malvén", avatar: "dog", group: "KAL-17", room: null, birthYear: "17", code: "BBM17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c15", name: "Takumi Joar Sugimoto Bytoft", avatar: "bunny", group: "KAL-17", room: null, birthYear: "17", code: "TJSB17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c16", name: "Melike Zeynep Can", avatar: "bear", group: "KAL-15", room: null, birthYear: "15", code: "MZC15", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c17", name: "Serhat Demir Can", avatar: "fox", group: "KAL-15", room: null, birthYear: "15", code: "SDC151", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c18", name: "Mio Carfors Mondschein", avatar: "panda", group: "KAL-17", room: null, birthYear: "17", code: "MCM17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c19", name: "Havin Yasmin Celep", avatar: "lion", group: "KAL-14", room: null, birthYear: "14", code: "HYC14", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c20", name: "Gabriel Celia", avatar: "unicorn", group: "KAL-17", room: null, birthYear: "17", code: "GC17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c21", name: "Suzan Ceylan", avatar: "frog", group: "KAL-17", room: null, birthYear: "17", code: "SC17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c22", name: "Elvin Cirik", avatar: "owl", group: "KAL-14", room: null, birthYear: "14", code: "EC14", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c23", name: "Meliha Cirik", avatar: "penguin", group: "KAL-14", room: null, birthYear: "14", code: "MC14", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c24", name: "Ayaz Daghan", avatar: "dolphin", group: "KAL-17", room: null, birthYear: "17", code: "AD171", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c25", name: "Aarshika Dana", avatar: "cat", group: "KAL-17", room: null, birthYear: "17", code: "AD172", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c26", name: "Aarushi Dana", avatar: "dog", group: "KAL-15", room: null, birthYear: "15", code: "AD15", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c27", name: "Sophia De Cal", avatar: "bunny", group: "KAL-15", room: null, birthYear: "15", code: "SDC152", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c28", name: "Luna Francesca Drazic Jonasson", avatar: "bear", group: "KAL-17", room: null, birthYear: "17", code: "LFDJ17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c29", name: "Arvid Eivazzadeh", avatar: "fox", group: "KAL-17", room: null, birthYear: "17", code: "AE17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c30", name: "Ahmet Efe Eren", avatar: "panda", group: "KAL-14", room: null, birthYear: "14", code: "AEE14", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c31", name: "Karim Fikri", avatar: "lion", group: "KAL-16", room: null, birthYear: "16", code: "KF16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c32", name: "Yahya Fikri", avatar: "unicorn", group: "KAL-16", room: null, birthYear: "16", code: "YF16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c33", name: "Rafaela Gallas de Almeida Machado", avatar: "frog", group: "KAL-17", room: null, birthYear: "17", code: "RGDAM17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c34", name: "Denjamin Garrett", avatar: "owl", group: "KAL-17", room: null, birthYear: "17", code: "DG17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c35", name: "Oscar Genlöv Hägnesten", avatar: "penguin", group: "KAL-15", room: null, birthYear: "15", code: "OGH15", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c36", name: "Isaac Giorgino Matos", avatar: "dolphin", group: "KAL-17", room: null, birthYear: "17", code: "IGM17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c37", name: "Pedro Augusto Gomes de Oliveira", avatar: "cat", group: "KAL-16", room: null, birthYear: "16", code: "PAGDO16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c38", name: "Olivia Granlund", avatar: "dog", group: "KAL-17", room: null, birthYear: "17", code: "OG17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c39", name: "Isabela Guignard Gilioli", avatar: "bunny", group: "KAL-17", room: null, birthYear: "17", code: "IGG17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c40", name: "Josef Hadi", avatar: "bear", group: "KAL-16", room: null, birthYear: "16", code: "JH16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c41", name: "Edin Hadzic", avatar: "fox", group: "KAL-16", room: null, birthYear: "16", code: "EH16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c42", name: "Selma Hadzic", avatar: "panda", group: "KAL-17", room: null, birthYear: "17", code: "SH17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c43", name: "Filip Haglund", avatar: "lion", group: "KAL-17", room: null, birthYear: "17", code: "FH17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c44", name: "Christian Hannon", avatar: "unicorn", group: "KAL-17", room: null, birthYear: "17", code: "CH17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c45", name: "Tyra Hedén Höglund", avatar: "frog", group: "KAL-17", room: null, birthYear: "17", code: "THH17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c46", name: "Dominic Hernandez Bengtsson", avatar: "owl", group: "KAL-17", room: null, birthYear: "17", code: "DHB17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c47", name: "Astor Holmstedt", avatar: "penguin", group: "KAL-16", room: null, birthYear: "16", code: "AH16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c48", name: "Huban Ibrahim", avatar: "dolphin", group: "KAL-17", room: null, birthYear: "17", code: "HI17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c49", name: "Alma Johansson", avatar: "cat", group: "KAL-16", room: null, birthYear: "16", code: "AJ16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c50", name: "Sixten Johansson", avatar: "dog", group: "KAL-17", room: null, birthYear: "17", code: "SJ17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c51", name: "Vanessa Josefsson", avatar: "bunny", group: "KAL-16", room: null, birthYear: "16", code: "VJ16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c52", name: "Leila Jukovic", avatar: "bear", group: "KAL-15", room: null, birthYear: "15", code: "LJ15", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c53", name: "Leo Kareem", avatar: "fox", group: "KAL-14", room: null, birthYear: "14", code: "LK14", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c54", name: "Liam Kareem", avatar: "panda", group: "KAL-16", room: null, birthYear: "16", code: "LK16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c55", name: "Khizar Raza Kazmi", avatar: "lion", group: "KAL-16", room: null, birthYear: "16", code: "KRK16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c56", name: "Dilara Khan", avatar: "unicorn", group: "KAL-16", room: null, birthYear: "16", code: "DK16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c57", name: "Eesha Rehman Khan", avatar: "frog", group: "KAL-15", room: null, birthYear: "15", code: "ERK15", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c58", name: "Aylin Kuko", avatar: "owl", group: "KAL-18", room: null, birthYear: "18", code: "AK18", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c59", name: "Olle Käll", avatar: "penguin", group: "KAL-17", room: null, birthYear: "17", code: "OK17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c60", name: "Wantong Lyu", avatar: "dolphin", group: "KAL-17", room: null, birthYear: "17", code: "WL17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c61", name: "Ila Lönn Hamfeldt", avatar: "cat", group: "KAL-17", room: null, birthYear: "17", code: "ILH17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c62", name: "Frans-Valter Magnusson", avatar: "dog", group: "KAL-17", room: null, birthYear: "17", code: "FM17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c63", name: "Charlie Magnusson-Ottosson", avatar: "bunny", group: "KAL-17", room: null, birthYear: "17", code: "CM17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c64", name: "Emilio Memed", avatar: "bear", group: "KAL-17", room: null, birthYear: "17", code: "EM17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c65", name: "Seyed Radin Mirlatifi", avatar: "fox", group: "KAL-16", room: null, birthYear: "16", code: "SRM16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c66", name: "Alf Modin", avatar: "panda", group: "KAL-17", room: null, birthYear: "17", code: "AM17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c67", name: "Yonis Mohamed Farah", avatar: "lion", group: "KAL-16", room: null, birthYear: "16", code: "YMF16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c68", name: "Iman Ahmed Mohmoud", avatar: "unicorn", group: "KAL-17", room: null, birthYear: "17", code: "IAM17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c69", name: "Mikkel-Chimezie Nnah Johansen", avatar: "frog", group: "KAL-14", room: null, birthYear: "14", code: "MNJ14", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c70", name: "Vilda Nordmark", avatar: "owl", group: "KAL-16", room: null, birthYear: "16", code: "VN16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c71", name: "Emil Olsson", avatar: "penguin", group: "KAL-17", room: null, birthYear: "17", code: "EO17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c72", name: "Milena Paulos", avatar: "dolphin", group: "KAL-15", room: null, birthYear: "15", code: "MP15", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c73", name: "Asiyah Phanivong", avatar: "cat", group: "KAL-15", room: null, birthYear: "15", code: "AP15", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c74", name: "Sofia Pinto Ribeiro", avatar: "dog", group: "KAL-17", room: null, birthYear: "17", code: "SPR17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c75", name: "Ethan Prado Serrano", avatar: "bunny", group: "KAL-16", room: null, birthYear: "16", code: "EPS16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c76", name: "Ahoura Rastegar", avatar: "bear", group: "KAL-16", room: null, birthYear: "16", code: "AR16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c77", name: "Leah Rojas Larsson", avatar: "fox", group: "KAL-17", room: null, birthYear: "17", code: "LRL17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c78", name: "Seyedehhanisa Sangtarash", avatar: "panda", group: "KAL-16", room: null, birthYear: "16", code: "SS16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c79", name: "Delaram Sattari", avatar: "lion", group: "KAL-17", room: null, birthYear: "17", code: "DS17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c80", name: "Keyla Sayyah", avatar: "unicorn", group: "KAL-16", room: null, birthYear: "16", code: "KS16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c81", name: "Matheus Felipe Silva", avatar: "frog", group: "KAL-16", room: null, birthYear: "16", code: "MFS16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c82", name: "Christopher Esteban Silva Avila", avatar: "owl", group: "KAL-15", room: null, birthYear: "15", code: "CESA15", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c83", name: "Clara Skager", avatar: "penguin", group: "KAL-14", room: null, birthYear: "14", code: "CS14", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c84", name: "Joni Smedberg", avatar: "dolphin", group: "KAL-16", room: null, birthYear: "16", code: "JS16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c85", name: "Arvin Soleiman Heshmat", avatar: "cat", group: "KAL-17", room: null, birthYear: "17", code: "ASH17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c86", name: "Isolde Spaanheden", avatar: "dog", group: "KAL-17", room: null, birthYear: "17", code: "IS17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c87", name: "Adam Sundqvist", avatar: "bunny", group: "KAL-17", room: null, birthYear: "17", code: "AS17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c88", name: "Bernardo Teixeira Barreira", avatar: "bear", group: "KAL-16", room: null, birthYear: "16", code: "BTB16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c89", name: "Ulas Tekcakmak", avatar: "fox", group: "KAL-18", room: null, birthYear: "18", code: "UT18", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c90", name: "Martin Minh Hai Tran", avatar: "panda", group: "KAL-17", room: null, birthYear: "17", code: "MMHT17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c91", name: "Sarp Efe Uguz", avatar: "lion", group: "KAL-14", room: null, birthYear: "14", code: "SEU14", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c92", name: "Ece Unalan", avatar: "unicorn", group: "KAL-14", room: null, birthYear: "14", code: "EU14", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c93", name: "Neo Wahlbäck", avatar: "frog", group: "KAL-15", room: null, birthYear: "15", code: "NW15", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c94", name: "Pengpeng Wang", avatar: "owl", group: "KAL-17", room: null, birthYear: "17", code: "PW17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c95", name: "Lavinia Viscardi de Vasconcellos Presezniak", avatar: "penguin", group: "KAL-16", room: null, birthYear: "16", code: "LVDVP16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c96", name: "Nicolas Viscardi de Vasconcellos Presezniak", avatar: "dolphin", group: "KAL-16", room: null, birthYear: "16", code: "NVDVP16", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c97", name: "Chenyu Xi", avatar: "cat", group: "KAL-17", room: null, birthYear: "17", code: "CX17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c98", name: "Ahmed Yuusuf", avatar: "dog", group: "KAL-13", room: null, birthYear: "13", code: "AY13", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c99", name: "Majlis Zeller", avatar: "bunny", group: "KAL-17", room: null, birthYear: "17", code: "MZ17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+  { id: "c100", name: "Curtis Åkesson", avatar: "bear", group: "KAL-17", room: null, birthYear: "17", code: "CÅ17", parentId: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null },
+];
+
+// Generate login code from full name + birth year (last 2 digits)
+const makeCode = (fullName, birthYear) => {
+  const parts = fullName.trim().split(/\s+/);
+  const initials = parts.map((p) => p[0]?.toUpperCase() || "").join("");
+  const yy = String(birthYear).slice(-2);
+  return initials + yy;
+};
+
+const PEDAGOGUES = [
+  { id: "ped1", name: "Viktor Thelander", code: "VT95", birthYear: "95" },
+  { id: "ped2", name: "Lisa Andersson", code: "LA88", birthYear: "88" },
+  { id: "ped3", name: "Marcus Eriksson", code: "ME90", birthYear: "90" },
+];
+
+// Vårdnadshavare – kopplas till elever via childrenIds (byggs ut vid behov)
+// Vårdnadshavare loggar in via barnets kod (initialer + födelseår), ingen separat parent-lista behövs.
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PERMISSIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const PERMISSIONS = {
+  child:   { placeAvatar: true, viewOwnRoom: true, viewAllRooms: true, manageStudents: false, viewDashboard: false, searchChildren: false, manageSystem: false },
+  pedagogue: { placeAvatar: false, viewOwnRoom: false, viewAllRooms: true, manageStudents: true, viewDashboard: true, searchChildren: true, manageSystem: false },
+  parent:  { placeAvatar: false, viewOwnRoom: false, viewAllRooms: false, manageStudents: false, viewDashboard: false, searchChildren: true, manageSystem: false },
+  admin:   { placeAvatar: false, viewOwnRoom: false, viewAllRooms: true, manageStudents: true, viewDashboard: true, searchChildren: true, manageSystem: true },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const av = (id) => AVATARS.find((a) => a.id === id) || AVATARS[0];
+const rm = (id) => ROOMS.find((r) => r.id === id);
+const fmtTime = (ts) => { if (!ts) return "–"; const m = Math.floor((Date.now() - ts) / 60000); return m < 1 ? "Just nu" : `${m} min sedan`; };
+const fmtClock = (ts) => { if (!ts) return "–"; const d = new Date(ts); return d.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" }); };
+let _id = 100;
+const uid = () => `c${_id++}`;
+
+const WEEKDAYS = [
+  { id: "mon", label: "Måndag", short: "Mån" },
+  { id: "tue", label: "Tisdag", short: "Tis" },
+  { id: "wed", label: "Onsdag", short: "Ons" },
+  { id: "thu", label: "Torsdag", short: "Tor" },
+  { id: "fri", label: "Fredag", short: "Fre" },
+];
+const emptySchedule = () => ({ mon: { time: "", comment: "" }, tue: { time: "", comment: "" }, wed: { time: "", comment: "" }, thu: { time: "", comment: "" }, fri: { time: "", comment: "" } });
+const getSchedule = (child) => child.weeklySchedule || emptySchedule();
+const todayDayId = () => { const d = new Date().getDay(); return ["sun","mon","tue","wed","thu","fri","sat"][d]; };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SHARED STYLES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const font = "'Nunito', 'Segoe UI', system-ui, sans-serif";
+const grad = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)";
+
+const btn = (active) => ({
+  padding: "10px 20px", borderRadius: 24, border: "none",
+  background: active ? "rgba(255,255,255,0.25)" : "transparent",
+  color: "white", fontWeight: active ? 700 : 500, fontSize: 14,
+  cursor: "pointer", fontFamily: font, transition: "all 0.2s",
+  display: "flex", alignItems: "center", gap: 6,
+  ...(active ? {} : { border: "2px solid rgba(255,255,255,0.2)" }),
+});
+
+const card = (extra = {}) => ({
+  background: "white", borderRadius: 20, padding: 24,
+  boxShadow: "0 2px 12px rgba(0,0,0,0.05)", ...extra,
+});
+
+const input = (extra = {}) => ({
+  width: "100%", padding: "12px 16px", borderRadius: 14,
+  border: "2px solid #e2e8f0", fontSize: 15, fontFamily: font,
+  outline: "none", boxSizing: "border-box", transition: "border 0.2s", ...extra,
+});
+
+const pillBtn = (active, color = "#667eea") => ({
+  padding: "8px 16px", borderRadius: 20, border: "none",
+  background: active ? color : "#f1f5f9", color: active ? "white" : "#64748b",
+  fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: font, transition: "all 0.2s",
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LOGIN SCREEN
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function LoginScreen({ onLogin, children: allChildren }) {
+  const [role, setRole] = useState(null);
+  const [childCode, setChildCode] = useState("");
+  const [code, setCode] = useState("");
+  const [pedCode, setPedCode] = useState("");
+  const [error, setError] = useState("");
+
+  const roles = [
+    { id: "child", icon: "😊", label: "Jag är barn", desc: "Logga in med dina initialer + födelseår", color: "#8B5CF6" },
+    { id: "pedagogue", icon: "👩‍🏫", label: "Pedagog", desc: "Logga in med initialer + födelseår", color: "#10B981" },
+    { id: "parent", icon: "👨‍👩‍👧", label: "Vårdnadshavare", desc: "Hitta ditt barn med barnets kod", color: "#3B82F6" },
+  ];
+
+  const handleChildLogin = () => {
+    const child = allChildren.find((c) => c.code.toLowerCase() === childCode.toLowerCase());
+    if (child) { setError(""); onLogin({ role: "child", user: child }); }
+    else setError("Fel kod. Fråga din pedagog!");
+  };
+
+  const handleParentLogin = () => {
+    const child = allChildren.find((c) => c.code.toLowerCase() === code.toLowerCase());
+    if (child) { setError(""); onLogin({ role: "parent", user: { name: "Vårdnadshavare", childCode: child.code } }); }
+    else setError("Hittade inget barn med den koden.");
+  };
+
+  const handlePedLogin = () => {
+    const ped = PEDAGOGUES.find((p) => p.code.toLowerCase() === pedCode.toLowerCase());
+    if (ped) { setError(""); onLogin({ role: "pedagogue", user: ped }); }
+    else setError("Fel kod. Kontrollera dina initialer + födelseår.");
+  };
+
+  if (!role) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #f0f4ff 0%, #fdf2f8 50%, #fef9c3 100%)", fontFamily: font, padding: 20 }}>
+        <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
+          <div style={{ fontSize: 56, marginBottom: 8 }}>🏠</div>
+          <h1 style={{ fontSize: 32, fontWeight: 800, color: "#1e293b", margin: "0 0 4px" }}>Fritidsappen</h1>
+          <p style={{ color: "#64748b", fontSize: 16, margin: "0 0 36px" }}>Välj hur du vill logga in</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {roles.map((r) => (
+              <button key={r.id} onClick={() => { setRole(r.id); setError(""); }}
+                style={{ display: "flex", alignItems: "center", gap: 16, padding: "20px 24px", borderRadius: 20, border: "none", background: "white", cursor: "pointer", fontFamily: font, boxShadow: "0 4px 16px rgba(0,0,0,0.06)", transition: "all 0.2s", textAlign: "left" }}>
+                <div style={{ width: 56, height: 56, borderRadius: 16, background: `${r.color}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, flexShrink: 0 }}>{r.icon}</div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 17, color: "#1e293b" }}>{r.label}</div>
+                  <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 2 }}>{r.desc}</div>
+                </div>
+                <div style={{ marginLeft: "auto", fontSize: 20, color: "#cbd5e1" }}>→</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #f0f4ff 0%, #fdf2f8 50%, #fef9c3 100%)", fontFamily: font, padding: 20 }}>
+      <div style={{ ...card({ maxWidth: 400, width: "100%", textAlign: "center", borderRadius: 28, padding: "40px 32px" }) }}>
+        <button onClick={() => { setRole(null); setError(""); }} style={{ position: "absolute", top: 16, left: 16, background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#94a3b8" }}>←</button>
+        <div style={{ fontSize: 48, marginBottom: 8 }}>{roles.find((r) => r.id === role)?.icon}</div>
+        <h2 style={{ fontSize: 22, fontWeight: 800, color: "#1e293b", margin: "0 0 24px" }}>{roles.find((r) => r.id === role)?.label}</h2>
+
+        {role === "child" && (
+          <>
+            <p style={{ color: "#64748b", fontSize: 14, margin: "0 0 6px" }}>Skriv dina initialer + födelseår</p>
+            <p style={{ color: "#94a3b8", fontSize: 12, margin: "0 0 16px" }}>T.ex. Viktor Thelander född 1995 = <strong style={{ color: "#8B5CF6" }}>VT95</strong></p>
+            <input value={childCode} onChange={(e) => setChildCode(e.target.value.toUpperCase().slice(0, 6))} placeholder="T.ex. VT95"
+              onKeyDown={(e) => { if (e.key === "Enter" && childCode.trim().length >= 3) handleChildLogin(); }}
+              style={{ ...input({ textAlign: "center", fontSize: 28, fontWeight: 800, letterSpacing: 6, marginBottom: 20, color: "#8B5CF6" }) }} autoFocus />
+            <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 20 }}>
+              {childCode.split("").map((ch, i) => (
+                <div key={i} style={{ width: 44, height: 52, borderRadius: 12, background: "#f5f3ff", border: "2px solid #8B5CF6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 800, color: "#8B5CF6", transition: "all 0.2s" }}>{ch}</div>
+              ))}
+              {childCode.length < 4 && Array.from({ length: Math.max(0, 4 - childCode.length) }).map((_, i) => (
+                <div key={`e${i}`} style={{ width: 44, height: 52, borderRadius: 12, background: "#f8fafc", border: "2px dashed #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }} />
+              ))}
+            </div>
+            <button disabled={childCode.trim().length < 3} onClick={handleChildLogin}
+              style={{ width: "100%", padding: 14, borderRadius: 16, border: "none", background: childCode.trim().length >= 3 ? "#8B5CF6" : "#e2e8f0", color: childCode.trim().length >= 3 ? "white" : "#94a3b8", fontSize: 16, fontWeight: 700, cursor: childCode.trim().length >= 3 ? "pointer" : "not-allowed", fontFamily: font }}>
+              Logga in 🚀
+            </button>
+          </>
+        )}
+
+        {role === "parent" && (
+          <>
+            <p style={{ color: "#64748b", fontSize: 14, margin: "0 0 6px" }}>Skriv ditt barns initialer + födelseår</p>
+            <p style={{ color: "#94a3b8", fontSize: 12, margin: "0 0 16px" }}>T.ex. Emelie Anusic född 2014 = <strong style={{ color: "#3B82F6" }}>EA14</strong></p>
+            <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 8))} placeholder="T.ex. EA14"
+              onKeyDown={(e) => { if (e.key === "Enter" && code.trim().length >= 3) handleParentLogin(); }}
+              style={{ ...input({ textAlign: "center", fontSize: 28, fontWeight: 800, letterSpacing: 6, marginBottom: 20, color: "#3B82F6" }) }} autoFocus />
+            <button disabled={code.trim().length < 3} onClick={handleParentLogin}
+              style={{ width: "100%", padding: 14, borderRadius: 16, border: "none", background: code.trim().length >= 3 ? "#3B82F6" : "#e2e8f0", color: code.trim().length >= 3 ? "white" : "#94a3b8", fontSize: 16, fontWeight: 700, cursor: code.trim().length >= 3 ? "pointer" : "not-allowed", fontFamily: font }}>
+              Hitta mitt barn 🔍
+            </button>
+          </>
+        )}
+
+        {role === "pedagogue" && (
+          <>
+            <p style={{ color: "#64748b", fontSize: 14, margin: "0 0 6px" }}>Skriv dina initialer + födelseår</p>
+            <p style={{ color: "#94a3b8", fontSize: 12, margin: "0 0 16px" }}>T.ex. Viktor Thelander född 1995 = <strong style={{ color: "#10B981" }}>VT95</strong></p>
+            <input value={pedCode} onChange={(e) => setPedCode(e.target.value.toUpperCase().slice(0, 6))} placeholder="T.ex. VT95"
+              onKeyDown={(e) => { if (e.key === "Enter" && pedCode.trim().length >= 3) handlePedLogin(); }}
+              style={{ ...input({ textAlign: "center", fontSize: 28, fontWeight: 800, letterSpacing: 6, marginBottom: 20, color: "#10B981" }) }} autoFocus />
+            <button disabled={pedCode.trim().length < 3} onClick={handlePedLogin}
+              style={{ width: "100%", padding: 14, borderRadius: 16, border: "none", background: pedCode.trim().length >= 3 ? "#10B981" : "#e2e8f0", color: pedCode.trim().length >= 3 ? "white" : "#94a3b8", fontSize: 16, fontWeight: 700, cursor: pedCode.trim().length >= 3 ? "pointer" : "not-allowed", fontFamily: font }}>
+              Öppna dashboard 📋
+            </button>
+          </>
+        )}
+
+        {error && <div style={{ marginTop: 14, padding: "10px 16px", background: "#fef2f2", borderRadius: 12, color: "#dc2626", fontSize: 13, fontWeight: 600 }}>⚠️ {error}</div>}
+
+        <div style={{ marginTop: 20, fontSize: 12, color: "#cbd5e1" }}>
+          {role === "child" && "T.ex. JA17 (Jürgen), NA17 (Noah), EA14 (Emelie)..."}
+          {role === "parent" && "T.ex. EA14 (Emelie), NA17 (Noah), JA17 (Jürgen)..."}
+          {role === "pedagogue" && "Demo: VT95 (Viktor), LA88 (Lisa), ME90 (Marcus)"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CHILD VIEW – Avatar placement
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function ChildView({ user, allChildren, setAllChildren }) {
+  // Get live child data (status may change via pedagogue)
+  const liveUser = allChildren.find((c) => c.id === user.id) || user;
+  const [currentRoom, setCurrentRoom] = useState(liveUser.room);
+  const [dragTarget, setDragTarget] = useState(null);
+  const [confirmAnim, setConfirmAnim] = useState(null);
+  const [showReminder, setShowReminder] = useState(false);
+  const [showGoHome, setShowGoHome] = useState(false);
+  const [checkInAnim, setCheckInAnim] = useState(false);
+
+  // Sync room from live data (pedagogue might move child)
+  useEffect(() => { setCurrentRoom(liveUser.room); }, [liveUser.room]);
+
+  useEffect(() => {
+    if (liveUser.status === "incheckad" && !currentRoom) {
+      const t = setTimeout(() => setShowReminder(true), 4000);
+      return () => clearTimeout(t);
+    } else setShowReminder(false);
+  }, [currentRoom, liveUser.status]);
+
+  const handleCheckIn = () => {
+    setCheckInAnim(true);
+    setAllChildren((prev) => prev.map((c) => c.id === user.id ? { ...c, status: "incheckad", checkedInAt: Date.now(), checkedOutAt: null, room: null, updatedAt: null } : c));
+    setTimeout(() => setCheckInAnim(false), 2000);
+  };
+
+  const handleGoHome = () => {
+    setAllChildren((prev) => prev.map((c) => c.id === user.id ? { ...c, status: "gått_hem", checkedOutAt: Date.now(), room: null, updatedAt: Date.now() } : c));
+    setCurrentRoom(null);
+    setShowGoHome(false);
+  };
+
+  const placeAvatar = (roomId) => {
+    setCurrentRoom(roomId);
+    setConfirmAnim(roomId);
+    setAllChildren((prev) => prev.map((c) => c.id === user.id ? { ...c, room: roomId, updatedAt: Date.now() } : c));
+    setTimeout(() => setConfirmAnim(null), 1800);
+  };
+
+  const grouped = {};
+  Object.keys(ZONES).forEach((z) => (grouped[z] = ROOMS.filter((r) => r.zone === z)));
+  const roomObj = currentRoom ? rm(currentRoom) : null;
+
+  // ── NOT CHECKED IN screen ──
+  if (liveUser.status === "ej_incheckad" || (liveUser.status === "gått_hem" && !checkInAnim)) {
+    const isGoneHome = liveUser.status === "gått_hem";
+    return (
+      <div style={{ minHeight: "100vh", background: "linear-gradient(180deg, #f0f4ff 0%, #fdf2f8 50%, #fef9c3 100%)", fontFamily: font, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+        <div style={{ maxWidth: 400, width: "100%", textAlign: "center" }}>
+          <div style={{ fontSize: 80, marginBottom: 12, animation: checkInAnim ? "bounceIn 0.6s ease-out" : "none" }}>
+            {isGoneHome ? "🏠" : av(user.avatar).emoji}
+          </div>
+          <h2 style={{ fontSize: 26, fontWeight: 800, color: "#1e293b", margin: "0 0 4px" }}>
+            Hej {user.name.split(" ")[0]}!
+          </h2>
+          {isGoneHome ? (
+            <>
+              <p style={{ color: "#6b7280", fontSize: 15, margin: "0 0 8px" }}>Du gick hem kl. {fmtClock(liveUser.checkedOutAt)}</p>
+              <p style={{ color: "#9ca3af", fontSize: 13, margin: "0 0 28px" }}>Kom du tillbaka? Checka in igen!</p>
+            </>
+          ) : (
+            <p style={{ color: "#64748b", fontSize: 15, margin: "0 0 28px" }}>Välkommen till fritids! Tryck för att checka in.</p>
+          )}
+          <button onClick={handleCheckIn}
+            style={{ width: "100%", padding: "20px 24px", borderRadius: 24, border: "none", background: "linear-gradient(135deg, #10b981, #059669)", color: "white", fontSize: 22, fontWeight: 800, cursor: "pointer", fontFamily: font, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, boxShadow: "0 8px 24px rgba(16,185,129,0.3)", transition: "transform 0.2s" }}>
+            ✅ {isGoneHome ? "Checka in igen" : "Jag är här!"}
+          </button>
+          <div style={{ marginTop: 16, fontSize: 12, color: "#cbd5e1" }}>
+            {av(user.avatar).emoji} {user.code}
+          </div>
+        </div>
+
+        <style>{`
+          @keyframes bounceIn { 0% { transform: scale(0); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
+        `}</style>
+      </div>
+    );
+  }
+
+  // ── CHECKED IN: Normal room view ──
+  return (
+    <div style={{ minHeight: "100vh", background: "linear-gradient(180deg, #f0f4ff 0%, #fdf2f8 50%, #f0fdf4 100%)", fontFamily: font, paddingBottom: 100 }}>
+
+      {/* Floating avatar bar */}
+      <div style={{ position: "sticky", top: 56, zIndex: 50, padding: "12px 16px", display: "flex", justifyContent: "center" }}>
+        <div style={{
+          background: "white", borderRadius: 24, padding: "10px 16px 10px 24px", display: "flex", alignItems: "center", gap: 12,
+          boxShadow: "0 4px 20px rgba(0,0,0,0.1)", border: currentRoom ? `3px solid ${roomObj?.color || "#667eea"}` : "3px solid #fcd34d",
+        }}>
+          <div style={{ fontSize: 36, cursor: "grab", userSelect: "none", transition: "transform 0.2s", ...(dragTarget ? { transform: "scale(1.2)" } : {}) }}
+            draggable onDragStart={(e) => { e.dataTransfer.setData("text/plain", "avatar"); }}
+            onDragEnd={() => setDragTarget(null)}>
+            {av(user.avatar).emoji}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: "#1e293b" }}>{user.name}</div>
+            {currentRoom ? (
+              <div style={{ fontSize: 13, color: roomObj?.color, fontWeight: 600 }}>{roomObj?.icon} {roomObj?.name}</div>
+            ) : (
+              <div style={{ fontSize: 13, color: "#f59e0b", fontWeight: 600 }}>Dra mig till ett rum! 👇</div>
+            )}
+          </div>
+          {/* Go home button */}
+          <button onClick={() => setShowGoHome(true)} title="Gå hem"
+            style={{ background: "#f3f4f6", border: "none", borderRadius: 14, padding: "8px 12px", cursor: "pointer", fontSize: 14, fontFamily: font, fontWeight: 700, color: "#6b7280", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+            🏠
+          </button>
+        </div>
+      </div>
+
+      {/* Reminder */}
+      {showReminder && !currentRoom && (
+        <div style={{ margin: "0 16px 12px", padding: "14px 20px", background: "linear-gradient(135deg, #fef3c7, #fde68a)", borderRadius: 16, textAlign: "center", fontSize: 15, fontWeight: 600, color: "#92400e", boxShadow: "0 4px 12px rgba(245,158,11,0.2)", animation: "slideDown 0.3s ease-out" }}>
+          🔔 Var är du? Dra din avatar eller tryck på ett rum!
+        </div>
+      )}
+
+      {/* Room zones */}
+      <div style={{ padding: "0 16px" }}>
+        {Object.entries(grouped).map(([zoneId, rooms]) => (
+          <div key={zoneId} style={{ marginBottom: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, paddingLeft: 4 }}>
+              <span style={{ fontSize: 18 }}>{ZONES[zoneId].icon}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: ZONES[zoneId].color, textTransform: "uppercase", letterSpacing: 0.5 }}>{ZONES[zoneId].label}</span>
+              <div style={{ flex: 1, height: 2, background: `${ZONES[zoneId].color}25`, borderRadius: 1 }} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
+              {rooms.map((room) => {
+                const here = allChildren.filter((c) => c.room === room.id && c.status === "incheckad");
+                const isMe = currentRoom === room.id;
+                const isDragOver = dragTarget === room.id;
+                return (
+                  <div key={room.id}
+                    onDragOver={(e) => { e.preventDefault(); setDragTarget(room.id); }}
+                    onDragLeave={() => setDragTarget(null)}
+                    onDrop={(e) => { e.preventDefault(); setDragTarget(null); placeAvatar(room.id); }}
+                    onClick={() => placeAvatar(room.id)}
+                    style={{
+                      position: "relative", display: "flex", flexDirection: "column", alignItems: "center",
+                      padding: "18px 10px 14px", borderRadius: 22, cursor: "pointer", fontFamily: font,
+                      border: isMe ? `3px solid ${room.color}` : isDragOver ? `3px dashed ${room.color}` : "3px solid transparent",
+                      background: isDragOver ? `${room.bg}` : isMe ? room.bg : "white",
+                      boxShadow: isMe ? `0 6px 20px ${room.color}30` : "0 2px 8px rgba(0,0,0,0.05)",
+                      transform: isDragOver ? "scale(1.03)" : isMe ? "scale(1.02)" : "scale(1)",
+                      transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                    }}>
+                    {/* Confirmed badge */}
+                    {confirmAnim === room.id && (
+                      <div style={{ position: "absolute", inset: 0, borderRadius: 22, display: "flex", alignItems: "center", justifyContent: "center", background: `${room.color}20`, zIndex: 10, animation: "fadeInOut 1.8s ease-out forwards", pointerEvents: "none" }}>
+                        <div style={{ background: room.color, color: "white", borderRadius: 16, padding: "10px 20px", fontSize: 15, fontWeight: 700, animation: "bounceIn 0.4s ease-out" }}>
+                          ✓ Du är här!
+                        </div>
+                      </div>
+                    )}
+                    {isMe && <div style={{ position: "absolute", top: -8, right: -8, background: room.color, color: "white", borderRadius: "50%", width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, boxShadow: "0 2px 6px rgba(0,0,0,0.15)" }}>✓</div>}
+                    <span style={{ fontSize: 34, marginBottom: 4 }}>{room.icon}</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: "#1e293b", textAlign: "center", lineHeight: 1.2 }}>{room.name}</span>
+                    {/* Mini avatars */}
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 2, justifyContent: "center", marginTop: 6, minHeight: 18 }}>
+                      {here.map((c) => <span key={c.id} style={{ fontSize: 14 }} title={c.name}>{av(c.avatar).emoji}</span>)}
+                    </div>
+                    {/* Activities */}
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 3, justifyContent: "center", marginTop: 6 }}>
+                      {room.activities.slice(0, 3).map((a, i) => (
+                        <span key={i} style={{ fontSize: 10, background: `${room.color}12`, color: room.color, padding: "2px 7px", borderRadius: 7, fontWeight: 600 }}>{a}</span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Go home confirmation modal */}
+      {showGoHome && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20, fontFamily: font }} onClick={() => setShowGoHome(false)}>
+          <div style={{ ...card({ maxWidth: 360, width: "100%", borderRadius: 28, padding: "32px 28px", textAlign: "center" }) }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 56, marginBottom: 12 }}>🏠</div>
+            <h3 style={{ fontSize: 22, fontWeight: 800, color: "#1e293b", margin: "0 0 8px" }}>Dags att gå hem?</h3>
+            <p style={{ fontSize: 14, color: "#64748b", margin: "0 0 24px" }}>
+              Du checkas ut kl. {new Date().toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setShowGoHome(false)} style={{ flex: 1, padding: 14, borderRadius: 16, border: "1px solid #e2e8f0", background: "white", fontWeight: 600, fontSize: 15, cursor: "pointer", fontFamily: font, color: "#64748b" }}>
+                Nej, stanna
+              </button>
+              <button onClick={handleGoHome} style={{ flex: 1, padding: 14, borderRadius: 16, border: "none", background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", color: "white", fontWeight: 700, fontSize: 15, cursor: "pointer", fontFamily: font }}>
+                Ja, hejdå! 👋
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes bounceIn { 0% { transform: scale(0); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
+        @keyframes slideDown { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes fadeInOut { 0% { opacity: 0; } 15% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
+      `}</style>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PEDAGOGUE VIEW – Dashboard + Student Management
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function PedagogueView({ allChildren, setAllChildren, onLogout }) {
+  const [tab, setTab] = useState("overview");
+  const [filterGroup, setFilterGroup] = useState("all");
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editChild, setEditChild] = useState(null);
+  const [importMode, setImportMode] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [roomPickChild, setRoomPickChild] = useState(null);
+  const [dismissedPickups, setDismissedPickups] = useState(new Set());
+  const [now, setNow] = useState(new Date());
+
+  // Update clock every 30 seconds for pickup notifications
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const groups = [...new Set(allChildren.map((c) => c.group))].sort();
+  const filtered = filterGroup === "all" ? allChildren : allChildren.filter((c) => c.group === filterGroup);
+
+  // Derived counts
+  const checkedIn = filtered.filter((c) => c.status === "incheckad");
+  const goneHome = filtered.filter((c) => c.status === "gått_hem");
+  const notCheckedIn = filtered.filter((c) => c.status === "ej_incheckad");
+  const unplaced = checkedIn.filter((c) => !c.room);
+
+  // ── Pickup notifications ──
+  const currentTime = now.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
+  const dayId = todayDayId();
+
+  // Find children who are checked in AND whose pickup time has arrived or passed
+  const pickupAlerts = useMemo(() => {
+    if (dayId === "sun" || dayId === "sat") return [];
+    return allChildren.filter((c) => {
+      if (c.status !== "incheckad") return false;
+      const sched = getSchedule(c);
+      const dayEntry = sched[dayId];
+      if (!dayEntry?.time) return false;
+      // Compare HH:MM strings — alert if current time >= pickup time
+      return currentTime >= dayEntry.time && !dismissedPickups.has(c.id);
+    }).map((c) => {
+      const sched = getSchedule(c);
+      return { ...c, pickupTime: sched[dayId].time, pickupComment: sched[dayId].comment };
+    });
+  }, [allChildren, currentTime, dayId, dismissedPickups]);
+
+  // Upcoming pickups (within next 30 min)
+  const upcomingPickups = useMemo(() => {
+    if (dayId === "sun" || dayId === "sat") return [];
+    const [h, m] = currentTime.split(":").map(Number);
+    const nowMin = h * 60 + m;
+    return allChildren.filter((c) => {
+      if (c.status !== "incheckad") return false;
+      const sched = getSchedule(c);
+      const dayEntry = sched[dayId];
+      if (!dayEntry?.time) return false;
+      const [ph, pm] = dayEntry.time.split(":").map(Number);
+      const pickMin = ph * 60 + pm;
+      return pickMin > nowMin && pickMin <= nowMin + 30;
+    }).map((c) => {
+      const sched = getSchedule(c);
+      return { ...c, pickupTime: sched[dayId].time, pickupComment: sched[dayId].comment };
+    });
+  }, [allChildren, currentTime, dayId]);
+
+  const dismissPickup = (childId) => setDismissedPickups((prev) => new Set([...prev, childId]));
+
+  // ── Actions ──
+  const handleCheckIn = (id) => {
+    setAllChildren((prev) => prev.map((c) => c.id === id ? { ...c, status: "incheckad", checkedInAt: Date.now(), checkedOutAt: null, room: null, updatedAt: null } : c));
+  };
+
+  const handleCheckOut = (id) => {
+    setAllChildren((prev) => prev.map((c) => c.id === id ? { ...c, status: "gått_hem", checkedOutAt: Date.now(), room: null, updatedAt: Date.now() } : c));
+  };
+
+  const handlePlaceInRoom = (childId, roomId) => {
+    setAllChildren((prev) => prev.map((c) => c.id === childId ? { ...c, room: roomId, updatedAt: Date.now() } : c));
+    setRoomPickChild(null);
+  };
+
+  const handleCheckInAll = () => {
+    const ids = new Set(notCheckedIn.map((c) => c.id));
+    setAllChildren((prev) => prev.map((c) => ids.has(c.id) ? { ...c, status: "incheckad", checkedInAt: Date.now(), checkedOutAt: null, room: null, updatedAt: null } : c));
+  };
+
+  const handleCheckOutAll = () => {
+    const ids = new Set(checkedIn.map((c) => c.id));
+    setAllChildren((prev) => prev.map((c) => ids.has(c.id) ? { ...c, status: "gått_hem", checkedOutAt: Date.now(), room: null, updatedAt: Date.now() } : c));
+  };
+
+  // Add new child
+  const handleAdd = (data) => {
+    const newChild = { id: uid(), ...data, room: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null };
+    setAllChildren((prev) => [...prev, newChild]);
+    setShowAddModal(false);
+  };
+
+  // Edit child
+  const handleEdit = (data) => {
+    setAllChildren((prev) => prev.map((c) => c.id === editChild.id ? { ...c, ...data } : c));
+    setEditChild(null);
+  };
+
+  // Delete child
+  const handleDelete = (id) => {
+    setAllChildren((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  // Import children from text
+  const handleImport = () => {
+    const lines = importText.split("\n").filter((l) => l.trim());
+    const newKids = lines.map((line) => {
+      const parts = line.split(/[,;\t]+/).map((s) => s.trim());
+      const fullName = parts[0] || "Namn Saknas";
+      const groupName = parts[1] || "Solen";
+      const bYear = parts[2] || String(Math.floor(13 + Math.random() * 6));
+      const code = makeCode(fullName, bYear);
+      return { id: uid(), name: fullName, group: groupName, avatar: AVATARS[Math.floor(Math.random() * AVATARS.length)].id, birthYear: bYear.slice(-2), code, parentId: null, room: null, updatedAt: null, status: "ej_incheckad", checkedInAt: null, checkedOutAt: null };
+    });
+    setAllChildren((prev) => [...prev, ...newKids]);
+    setImportText("");
+    setImportMode(false);
+  };
+
+  // Status badge
+  const statusBadge = (child) => {
+    if (child.status === "gått_hem") return { label: `Gått hem ${fmtClock(child.checkedOutAt)}`, color: "#6b7280", bg: "#f3f4f6", icon: "🏠" };
+    if (child.status === "incheckad") return { label: `Incheckad ${fmtClock(child.checkedInAt)}`, color: "#10b981", bg: "#ecfdf5", icon: "✅" };
+    return { label: "Ej incheckad", color: "#f59e0b", bg: "#fffbeb", icon: "⏳" };
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: font, paddingBottom: 40 }}>
+
+      {/* Sub-nav */}
+      <div style={{ display: "flex", gap: 0, background: "white", borderBottom: "2px solid #f1f5f9" }}>
+        {[
+          { id: "overview", label: "📋 Översikt" },
+          { id: "attendance", label: "✅ Närvaro" },
+          { id: "students", label: "👥 Elever" },
+        ].map((t) => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ flex: 1, padding: "14px", border: "none", background: tab === t.id ? "#f0f4ff" : "white", borderBottom: tab === t.id ? "3px solid #667eea" : "3px solid transparent", fontWeight: tab === t.id ? 700 : 500, fontSize: 14, cursor: "pointer", fontFamily: font, color: tab === t.id ? "#667eea" : "#64748b" }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── OVERVIEW TAB ── */}
+      {tab === "overview" && (
+        <div style={{ padding: "20px 16px" }}>
+          <h2 style={{ fontSize: 22, fontWeight: 800, color: "#1e293b", margin: "0 0 4px" }}>📋 Realtidsöversikt</h2>
+          <p style={{ color: "#64748b", margin: "0 0 16px", fontSize: 13 }}>Se var alla incheckade barn befinner sig just nu</p>
+
+          {/* Stats */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
+            {[
+              { n: filtered.length, label: "Totalt", color: "#3b82f6", bg: "white" },
+              { n: checkedIn.length, label: "Incheckade", color: "#10b981", bg: "#ecfdf5" },
+              { n: goneHome.length, label: "Gått hem", color: "#6b7280", bg: "#f9fafb" },
+              { n: notCheckedIn.length, label: "Ej incheckade", color: "#f59e0b", bg: notCheckedIn.length ? "#fffbeb" : "white" },
+            ].map((s, i) => (
+              <div key={i} style={{ ...card({ padding: 12, textAlign: "center", background: s.bg }) }}>
+                <div style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.n}</div>
+                <div style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* 🔔 PICKUP ALERTS — time to go home */}
+          {pickupAlerts.length > 0 && (
+            <div style={{ background: "linear-gradient(135deg, #fef2f2, #fce7f3)", borderRadius: 16, padding: "14px 18px", marginBottom: 14, border: "2px solid #f472b6", animation: "slideDown 0.3s ease-out" }}>
+              <div style={{ fontWeight: 700, color: "#be123c", fontSize: 14, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>🔔 Dags att gå hem!</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {pickupAlerts.map((c) => (
+                  <div key={c.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "white", borderRadius: 12, padding: "10px 14px", border: "1px solid #fecdd3" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 18 }}>{av(c.avatar).emoji}</span>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: "#1e293b" }}>{c.name} <span style={{ fontWeight: 600, color: "#be123c" }}>kl. {c.pickupTime}</span></div>
+                        {c.pickupComment && <div style={{ fontSize: 12, color: "#6366f1", fontWeight: 600, marginTop: 1 }}>💬 {c.pickupComment}</div>}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <button onClick={() => handleCheckOut(c.id)} style={{ background: "#fef2f2", border: "1px solid #fecdd3", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontFamily: font, fontWeight: 700, color: "#be123c" }}>🏠 Ut</button>
+                      <button onClick={() => dismissPickup(c.id)} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 8px", cursor: "pointer", fontSize: 11, fontFamily: font, color: "#94a3b8" }}>✕</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ⏰ UPCOMING PICKUPS — next 30 min */}
+          {upcomingPickups.length > 0 && (
+            <div style={{ background: "linear-gradient(135deg, #eef2ff, #faf5ff)", borderRadius: 16, padding: "14px 18px", marginBottom: 14, border: "1px solid #c7d2fe" }}>
+              <div style={{ fontWeight: 700, color: "#4338ca", fontSize: 13, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>⏰ Hämtas snart (inom 30 min)</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {upcomingPickups.map((c) => (
+                  <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "white", padding: "6px 12px", borderRadius: 10, fontSize: 12, fontWeight: 600, color: "#4338ca", border: "1px solid #c7d2fe" }}>
+                    {av(c.avatar).emoji} {c.name} <span style={{ color: "#818cf8" }}>kl. {c.pickupTime}</span>
+                    {c.pickupComment && <span style={{ fontSize: 10, color: "#6366f1" }} title={c.pickupComment}>💬</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Group filter */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+            <button onClick={() => setFilterGroup("all")} style={pillBtn(filterGroup === "all")}>Alla</button>
+            {groups.map((g) => <button key={g} onClick={() => setFilterGroup(g)} style={pillBtn(filterGroup === g)}>{g}</button>)}
+          </div>
+
+          {/* Warning: unplaced but checked in */}
+          {unplaced.length > 0 && (
+            <div style={{ background: "linear-gradient(135deg, #fef2f2, #fee2e2)", borderRadius: 16, padding: "14px 18px", marginBottom: 16, border: "1px solid #fca5a5" }}>
+              <div style={{ fontWeight: 700, color: "#dc2626", fontSize: 13, marginBottom: 6 }}>⚠️ Incheckade utan rum ({unplaced.length}):</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {unplaced.map((c) => (
+                  <button key={c.id} onClick={() => setRoomPickChild(c)} style={{ display: "flex", alignItems: "center", gap: 4, background: "white", padding: "5px 10px", borderRadius: 10, fontSize: 12, fontWeight: 600, color: "#dc2626", border: "1px solid #fca5a5", cursor: "pointer", fontFamily: font }}>{av(c.avatar).emoji} {c.name} <span style={{ fontSize: 10, color: "#94a3b8" }}>Placera →</span></button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Room cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
+            {ROOMS.map((room) => {
+              const kids = checkedIn.filter((c) => c.room === room.id);
+              return (
+                <div key={room.id} style={{ ...card({ padding: 0, overflow: "hidden", border: kids.length > 0 ? `2px solid ${room.color}30` : "1px solid #f1f5f9" }) }}>
+                  <div style={{ padding: "12px 16px", background: room.bg, display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `2px solid ${room.color}20` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 22 }}>{room.icon}</span>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{room.name}</div>
+                        <div style={{ fontSize: 10, color: "#64748b" }}>{room.activities.join(" · ")}</div>
+                      </div>
+                    </div>
+                    <div style={{ background: room.color, color: "white", borderRadius: 10, padding: "3px 10px", fontSize: 13, fontWeight: 700 }}>{kids.length}</div>
+                  </div>
+                  <div style={{ padding: "10px 14px", minHeight: 36 }}>
+                    {kids.length === 0 ? (
+                      <span style={{ color: "#cbd5e1", fontSize: 12, fontStyle: "italic" }}>Tomt</span>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {kids.map((c) => (
+                          <div key={c.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 8px", background: "#f8fafc", borderRadius: 8 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ fontSize: 16 }}>{av(c.avatar).emoji}</span>
+                              <span style={{ fontWeight: 600, fontSize: 12, color: "#1e293b" }}>{c.name}</span>
+                              <span style={{ fontSize: 10, color: "#94a3b8", background: "#f1f5f9", padding: "1px 6px", borderRadius: 5 }}>{c.group}</span>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <span style={{ fontSize: 10, color: "#94a3b8" }}>{fmtTime(c.updatedAt)}</span>
+                              <button onClick={() => handleCheckOut(c.id)} title="Checka ut" style={{ background: "#fef2f2", border: "none", borderRadius: 6, padding: "3px 6px", cursor: "pointer", fontSize: 11, fontFamily: font, color: "#ef4444" }}>🏠</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Gone home summary */}
+          {goneHome.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ ...card({ padding: 0, overflow: "hidden", border: "1px solid #e5e7eb" }) }}>
+                <div style={{ padding: "12px 16px", background: "#f9fafb", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #e5e7eb" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 22 }}>🏠</span>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: "#6b7280" }}>Gått hem</div>
+                      <div style={{ fontSize: 10, color: "#9ca3af" }}>Utcheckade elever</div>
+                    </div>
+                  </div>
+                  <div style={{ background: "#6b7280", color: "white", borderRadius: 10, padding: "3px 10px", fontSize: 13, fontWeight: 700 }}>{goneHome.length}</div>
+                </div>
+                <div style={{ padding: "10px 14px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {goneHome.map((c) => (
+                      <div key={c.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 8px", background: "#f9fafb", borderRadius: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 16, opacity: 0.5 }}>{av(c.avatar).emoji}</span>
+                          <span style={{ fontWeight: 600, fontSize: 12, color: "#9ca3af" }}>{c.name}</span>
+                          <span style={{ fontSize: 10, color: "#d1d5db", background: "#f3f4f6", padding: "1px 6px", borderRadius: 5 }}>{c.group}</span>
+                        </div>
+                        <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>🏠 {fmtClock(c.checkedOutAt)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── ATTENDANCE TAB ── */}
+      {tab === "attendance" && (
+        <div style={{ padding: "20px 16px" }}>
+          <h2 style={{ fontSize: 22, fontWeight: 800, color: "#1e293b", margin: "0 0 4px" }}>✅ Närvaro</h2>
+          <p style={{ color: "#64748b", margin: "0 0 16px", fontSize: 13 }}>Checka in och ut elever, placera i rum</p>
+
+          {/* Stats row */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+            <div style={{ ...card({ padding: 14, textAlign: "center", background: "#ecfdf5", border: "2px solid #a7f3d0" }) }}>
+              <div style={{ fontSize: 26, fontWeight: 800, color: "#10b981" }}>{checkedIn.length}</div>
+              <div style={{ fontSize: 11, color: "#047857", fontWeight: 600 }}>Incheckade</div>
+            </div>
+            <div style={{ ...card({ padding: 14, textAlign: "center", background: "#f9fafb" }) }}>
+              <div style={{ fontSize: 26, fontWeight: 800, color: "#6b7280" }}>{goneHome.length}</div>
+              <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>Gått hem</div>
+            </div>
+            <div style={{ ...card({ padding: 14, textAlign: "center", background: "#fffbeb", border: notCheckedIn.length ? "2px solid #fcd34d" : "none" }) }}>
+              <div style={{ fontSize: 26, fontWeight: 800, color: "#f59e0b" }}>{notCheckedIn.length}</div>
+              <div style={{ fontSize: 11, color: "#b45309", fontWeight: 600 }}>Ej incheckade</div>
+            </div>
+          </div>
+
+          {/* 🔔 Pickup alerts in attendance tab too */}
+          {pickupAlerts.length > 0 && (
+            <div style={{ background: "linear-gradient(135deg, #fef2f2, #fce7f3)", borderRadius: 16, padding: "14px 18px", marginBottom: 14, border: "2px solid #f472b6" }}>
+              <div style={{ fontWeight: 700, color: "#be123c", fontSize: 14, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>🔔 Dags att gå hem!</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {pickupAlerts.map((c) => (
+                  <div key={c.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "white", borderRadius: 12, padding: "10px 14px", border: "1px solid #fecdd3" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 18 }}>{av(c.avatar).emoji}</span>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: "#1e293b" }}>{c.name} <span style={{ fontWeight: 600, color: "#be123c" }}>kl. {c.pickupTime}</span></div>
+                        {c.pickupComment && <div style={{ fontSize: 12, color: "#6366f1", fontWeight: 600, marginTop: 1 }}>💬 {c.pickupComment}</div>}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <button onClick={() => handleCheckOut(c.id)} style={{ background: "#fef2f2", border: "1px solid #fecdd3", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontFamily: font, fontWeight: 700, color: "#be123c" }}>🏠 Ut</button>
+                      <button onClick={() => dismissPickup(c.id)} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 8px", cursor: "pointer", fontSize: 11, fontFamily: font, color: "#94a3b8" }}>✕</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Group filter */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+            <button onClick={() => setFilterGroup("all")} style={pillBtn(filterGroup === "all")}>Alla</button>
+            {groups.map((g) => <button key={g} onClick={() => setFilterGroup(g)} style={pillBtn(filterGroup === g)}>{g}</button>)}
+          </div>
+
+          {/* Bulk actions */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+            {notCheckedIn.length > 0 && (
+              <button onClick={handleCheckInAll} style={{ ...pillBtn(true, "#10b981"), display: "flex", alignItems: "center", gap: 6 }}>
+                ✅ Checka in alla ({notCheckedIn.length})
+              </button>
+            )}
+            {checkedIn.length > 0 && (
+              <button onClick={handleCheckOutAll} style={{ ...pillBtn(true, "#6b7280"), display: "flex", alignItems: "center", gap: 6 }}>
+                🏠 Checka ut alla ({checkedIn.length})
+              </button>
+            )}
+          </div>
+
+          {/* ── Not checked in ── */}
+          {notCheckedIn.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#f59e0b", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>⏳ Ej incheckade ({notCheckedIn.length})</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {notCheckedIn.map((child) => (
+                  <div key={child.id} style={{ ...card({ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid #fef3c7" }) }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 12, background: "#fffbeb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>{av(child.avatar).emoji}</div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{child.name}</div>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 2 }}>
+                          <span style={{ fontSize: 11, background: "#f1f5f9", padding: "2px 8px", borderRadius: 6, color: "#64748b", fontWeight: 600 }}>{child.group}</span>
+                          <span style={{ fontSize: 11, color: "#f59e0b", fontWeight: 600 }}>⏳ Ej incheckad</span>
+                        </div>
+                      </div>
+                    </div>
+                    <button onClick={() => handleCheckIn(child.id)} style={{ background: "#ecfdf5", border: "2px solid #a7f3d0", borderRadius: 12, padding: "10px 16px", cursor: "pointer", fontSize: 13, fontFamily: font, fontWeight: 700, color: "#047857", display: "flex", alignItems: "center", gap: 6 }}>
+                      ✅ Checka in
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Checked in ── */}
+          {checkedIn.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#10b981", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>✅ Incheckade ({checkedIn.length})</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {checkedIn.map((child) => {
+                  const childRoom = child.room ? rm(child.room) : null;
+                  return (
+                    <div key={child.id} style={{ ...card({ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid #a7f3d0" }) }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ width: 40, height: 40, borderRadius: 12, background: "#ecfdf5", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>{av(child.avatar).emoji}</div>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{child.name}</div>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 2, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 11, background: "#f1f5f9", padding: "2px 8px", borderRadius: 6, color: "#64748b", fontWeight: 600 }}>{child.group}</span>
+                            <span style={{ fontSize: 11, color: "#10b981", fontWeight: 600 }}>In {fmtClock(child.checkedInAt)}</span>
+                            {childRoom ? (
+                              <span style={{ fontSize: 11, color: childRoom.color, fontWeight: 600 }}>{childRoom.icon} {childRoom.name}</span>
+                            ) : (
+                              <span style={{ fontSize: 11, color: "#ef4444", fontWeight: 600 }}>📍 Inget rum</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button onClick={() => setRoomPickChild(child)} title="Placera i rum" style={{ background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: 10, padding: "8px 12px", cursor: "pointer", fontSize: 12, fontFamily: font, fontWeight: 600, color: "#667eea" }}>
+                          📍 Rum
+                        </button>
+                        <button onClick={() => handleCheckOut(child.id)} title="Checka ut" style={{ background: "#f3f4f6", border: "1px solid #d1d5db", borderRadius: 10, padding: "8px 12px", cursor: "pointer", fontSize: 12, fontFamily: font, fontWeight: 600, color: "#6b7280" }}>
+                          🏠 Ut
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Gone home ── */}
+          {goneHome.length > 0 && (
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#6b7280", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>🏠 Gått hem ({goneHome.length})</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {goneHome.map((child) => (
+                  <div key={child.id} style={{ ...card({ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", opacity: 0.7 }) }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 12, background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>{av(child.avatar).emoji}</div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: "#9ca3af" }}>{child.name}</div>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 2 }}>
+                          <span style={{ fontSize: 11, background: "#f3f4f6", padding: "2px 8px", borderRadius: 6, color: "#9ca3af", fontWeight: 600 }}>{child.group}</span>
+                          <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>🏠 Gick hem {fmtClock(child.checkedOutAt)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <button onClick={() => handleCheckIn(child.id)} title="Checka in igen" style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, padding: "8px 10px", cursor: "pointer", fontSize: 12, fontFamily: font, fontWeight: 600, color: "#047857" }}>
+                      ↩️ In igen
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── STUDENTS TAB ── */}
+      {tab === "students" && (
+        <div style={{ padding: "20px 16px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
+            <div>
+              <h2 style={{ fontSize: 22, fontWeight: 800, color: "#1e293b", margin: 0 }}>👥 Elevhantering</h2>
+              <p style={{ color: "#64748b", margin: "2px 0 0", fontSize: 13 }}>{allChildren.length} elever registrerade</p>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setImportMode(true)} style={{ ...pillBtn(false), background: "#f0fdf4", color: "#10b981", border: "1px solid #bbf7d0" }}>📥 Importera</button>
+              <button onClick={() => setShowAddModal(true)} style={{ ...pillBtn(true), background: "#667eea" }}>+ Lägg till elev</button>
+            </div>
+          </div>
+
+          {/* Import panel */}
+          {importMode && (
+            <div style={{ ...card({ marginBottom: 16, border: "2px solid #bbf7d0" }) }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: "#1e293b", margin: "0 0 8px" }}>📥 Importera elever</h3>
+              <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 10px" }}>Klistra in elevlista. Format: <code>Förnamn Efternamn, Grupp, Födelseår</code> (en per rad)</p>
+              <textarea value={importText} onChange={(e) => setImportText(e.target.value)} rows={5} placeholder={"Ella Karlsson, Solen, 15\nViktor Thelander, Månen, 14\nAlice Björk, Stjärnan, 16"} style={{ ...input({ resize: "vertical", fontFamily: "monospace", fontSize: 13 }) }} />
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button onClick={handleImport} disabled={!importText.trim()} style={{ ...pillBtn(true, "#10b981"), opacity: importText.trim() ? 1 : 0.5 }}>Importera {importText.split("\n").filter((l) => l.trim()).length} elever</button>
+                <button onClick={() => { setImportMode(false); setImportText(""); }} style={pillBtn(false)}>Avbryt</button>
+              </div>
+            </div>
+          )}
+
+          {/* Group filter */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+            <button onClick={() => setFilterGroup("all")} style={pillBtn(filterGroup === "all")}>Alla ({allChildren.length})</button>
+            {groups.map((g) => <button key={g} onClick={() => setFilterGroup(g)} style={pillBtn(filterGroup === g)}>{g} ({allChildren.filter((c) => c.group === g).length})</button>)}
+          </div>
+
+          {/* Student list */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {filtered.map((child) => {
+              const sb = statusBadge(child);
+              return (
+                <div key={child.id} style={{ ...card({ padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }) }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 44, height: 44, borderRadius: 14, background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>{av(child.avatar).emoji}</div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 15, color: "#1e293b" }}>{child.name}</div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 2, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 11, background: "#f1f5f9", padding: "2px 8px", borderRadius: 6, color: "#64748b", fontWeight: 600 }}>{child.group}</span>
+                        <span style={{ fontSize: 11, color: "#8B5CF6", fontWeight: 700, background: "#f5f3ff", padding: "2px 8px", borderRadius: 6, fontFamily: "monospace" }}>{child.code}</span>
+                        <span style={{ fontSize: 11, color: sb.color, fontWeight: 600, background: sb.bg, padding: "2px 8px", borderRadius: 6 }}>{sb.icon} {sb.label}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={() => setEditChild(child)} style={{ background: "#f1f5f9", border: "none", borderRadius: 10, padding: "8px 12px", cursor: "pointer", fontSize: 13, fontFamily: font, fontWeight: 600, color: "#64748b" }}>✏️</button>
+                    <button onClick={() => handleDelete(child.id)} style={{ background: "#fef2f2", border: "none", borderRadius: 10, padding: "8px 12px", cursor: "pointer", fontSize: 13, fontFamily: font, fontWeight: 600, color: "#ef4444" }}>🗑️</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── ROOM PICKER MODAL ── */}
+      {roomPickChild && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 16, fontFamily: font }} onClick={() => setRoomPickChild(null)}>
+          <div style={{ ...card({ maxWidth: 480, width: "100%", borderRadius: 28, padding: "28px 24px", maxHeight: "85vh", overflowY: "auto" }) }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <div>
+                <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: "#1e293b" }}>📍 Placera {roomPickChild.name}</h3>
+                <p style={{ margin: "2px 0 0", fontSize: 13, color: "#64748b" }}>Välj rum att placera eleven i</p>
+              </div>
+              <button onClick={() => setRoomPickChild(null)} style={{ background: "#f1f5f9", border: "none", borderRadius: 10, width: 34, height: 34, cursor: "pointer", fontSize: 16 }}>✕</button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {Object.entries(ZONES).map(([zoneId, zone]) => (
+                <div key={zoneId}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: zone.color, margin: "8px 0 6px", display: "flex", alignItems: "center", gap: 4 }}>{zone.icon} {zone.label}</div>
+                  {ROOMS.filter((r) => r.zone === zoneId).map((room) => {
+                    const isCurrentRoom = roomPickChild.room === room.id;
+                    const kidsInRoom = allChildren.filter((c) => c.room === room.id && c.status === "incheckad").length;
+                    return (
+                      <button key={room.id} onClick={() => handlePlaceInRoom(roomPickChild.id, room.id)}
+                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "12px 16px", borderRadius: 14, border: isCurrentRoom ? `2px solid ${room.color}` : "1px solid #e2e8f0", background: isCurrentRoom ? room.bg : "white", cursor: "pointer", fontFamily: font, marginBottom: 6, textAlign: "left" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <span style={{ fontSize: 22 }}>{room.icon}</span>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{room.name}</div>
+                            <div style={{ fontSize: 11, color: "#94a3b8" }}>{room.activities.slice(0, 3).join(", ")}</div>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>{kidsInRoom} barn</span>
+                          {isCurrentRoom && <span style={{ fontSize: 11, background: room.color, color: "white", padding: "3px 8px", borderRadius: 8, fontWeight: 700 }}>Här nu</span>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ADD/EDIT MODAL ── */}
+      {(showAddModal || editChild) && (
+        <StudentModal
+          child={editChild}
+          onSave={editChild ? handleEdit : handleAdd}
+          onClose={() => { setShowAddModal(false); setEditChild(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function StudentModal({ child, onSave, onClose }) {
+  const [name, setName] = useState(child?.name || "");
+  const [group, setGroup] = useState(child?.group || "Solen");
+  const [avatar, setAvatar] = useState(child?.avatar || "cat");
+  const [birthYear, setBirthYear] = useState(child?.birthYear || "");
+
+  const generatedCode = name.trim() && birthYear.length === 2 ? makeCode(name, birthYear) : "";
+  const isValid = name.trim() && birthYear.length === 2 && generatedCode;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 16, fontFamily: font }} onClick={onClose}>
+      <div style={{ ...card({ maxWidth: 440, width: "100%", borderRadius: 28, padding: "32px 28px" }) }} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ fontSize: 20, fontWeight: 800, margin: "0 0 20px", color: "#1e293b" }}>{child ? "✏️ Redigera elev" : "➕ Ny elev"}</h3>
+
+        <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>Fullständigt namn</label>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Förnamn Efternamn" style={{ ...input({ marginBottom: 14 }) }} />
+
+        <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>Födelseår (två siffror)</label>
+        <input value={birthYear} onChange={(e) => setBirthYear(e.target.value.replace(/\D/g, "").slice(0, 2))} placeholder="T.ex. 15 (för 2015)" style={{ ...input({ marginBottom: 14, fontFamily: "monospace", fontSize: 18, textAlign: "center", letterSpacing: 4, maxWidth: 140 }) }} />
+
+        {/* Auto-generated code preview */}
+        {generatedCode && (
+          <div style={{ marginBottom: 14, padding: "12px 16px", background: "#f5f3ff", borderRadius: 14, border: "2px solid #8B5CF620", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 2 }}>Inloggningskod (genereras automatiskt)</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: "#8B5CF6", fontFamily: "monospace", letterSpacing: 4 }}>{generatedCode}</div>
+            </div>
+            <div style={{ fontSize: 28 }}>🔑</div>
+          </div>
+        )}
+
+        <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>Grupp</label>
+        <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+          {["Solen", "Månen", "Stjärnan"].map((g) => (
+            <button key={g} onClick={() => setGroup(g)} style={pillBtn(group === g)}>{g}</button>
+          ))}
+        </div>
+
+        <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 6 }}>Avatar</label>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6, marginBottom: 20 }}>
+          {AVATARS.map((a) => (
+            <button key={a.id} onClick={() => setAvatar(a.id)} style={{ border: avatar === a.id ? "2px solid #667eea" : "2px solid transparent", borderRadius: 12, padding: 6, background: avatar === a.id ? "#eef2ff" : "#f8fafc", cursor: "pointer", fontSize: 22, textAlign: "center" }}>{a.emoji}</button>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: 14, borderRadius: 14, border: "1px solid #e2e8f0", background: "white", fontWeight: 600, fontSize: 15, cursor: "pointer", fontFamily: font, color: "#64748b" }}>Avbryt</button>
+          <button disabled={!isValid} onClick={() => onSave({ name: name.trim(), group, avatar, birthYear, code: generatedCode })}
+            style={{ flex: 1, padding: 14, borderRadius: 14, border: "none", background: isValid ? "#667eea" : "#e2e8f0", color: isValid ? "white" : "#94a3b8", fontWeight: 700, fontSize: 15, cursor: isValid ? "pointer" : "not-allowed", fontFamily: font }}>
+            {child ? "Spara" : "Lägg till"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PARENT VIEW – Search & Overview
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function ParentView({ parent, allChildren, setAllChildren }) {
+  const [searchCode, setSearchCode] = useState(parent.childCode || "");
+  const [confirmCheckout, setConfirmCheckout] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [editSchedule, setEditSchedule] = useState(null); // local copy while editing
+  const [savedMsg, setSavedMsg] = useState(false);
+  const foundChild = allChildren.find((c) => c.code.toLowerCase() === searchCode.toLowerCase());
+
+  const room = foundChild?.room ? rm(foundChild.room) : null;
+  const isOutdoor = room && (room.zone === "utomhus");
+  const isCheckedIn = foundChild?.status === "incheckad";
+  const isGoneHome = foundChild?.status === "gått_hem";
+  const schedule = foundChild ? getSchedule(foundChild) : emptySchedule();
+  const today = todayDayId();
+  const todaySchedule = schedule[today];
+
+  const handleParentCheckout = () => {
+    if (!foundChild) return;
+    setAllChildren((prev) => prev.map((c) => c.id === foundChild.id ? { ...c, status: "gått_hem", checkedOutAt: Date.now(), room: null, updatedAt: Date.now() } : c));
+    setConfirmCheckout(false);
+  };
+
+  const openScheduleEditor = () => {
+    setEditSchedule(JSON.parse(JSON.stringify(schedule)));
+    setShowSchedule(true);
+  };
+
+  const saveSchedule = () => {
+    if (!foundChild || !editSchedule) return;
+    setAllChildren((prev) => prev.map((c) => c.id === foundChild.id ? { ...c, weeklySchedule: editSchedule } : c));
+    setShowSchedule(false);
+    setEditSchedule(null);
+    setSavedMsg(true);
+    setTimeout(() => setSavedMsg(false), 2500);
+  };
+
+  const updateDay = (dayId, field, value) => {
+    setEditSchedule((prev) => ({ ...prev, [dayId]: { ...prev[dayId], [field]: value } }));
+  };
+
+  // Count how many days have a time set
+  const daysWithTime = WEEKDAYS.filter((d) => schedule[d.id]?.time).length;
+
+  return (
+    <div style={{ minHeight: "100vh", background: "linear-gradient(180deg, #f0f4ff 0%, #faf5ff 100%)", fontFamily: font, padding: "24px 16px 40px" }}>
+      <div style={{ maxWidth: 480, margin: "0 auto" }}>
+
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div style={{ fontSize: 40, marginBottom: 4 }}>👨‍👩‍👧</div>
+          <h2 style={{ fontSize: 22, fontWeight: 800, color: "#1e293b", margin: "0 0 2px" }}>Var är mitt barn?</h2>
+          <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>Skriv ditt barns kod för att se var hen är</p>
+        </div>
+
+        {/* Search bar */}
+        <div style={{ position: "relative", marginBottom: 24 }}>
+          <div style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", fontSize: 18, pointerEvents: "none" }}>🔍</div>
+          <input value={searchCode} onChange={(e) => { setSearchCode(e.target.value.toUpperCase().slice(0, 8)); setConfirmCheckout(false); }} placeholder="T.ex. EA14"
+            style={{ ...input({ paddingLeft: 44, fontSize: 22, fontWeight: 800, letterSpacing: 4, borderRadius: 18, background: "white", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", color: "#3B82F6" }) }} />
+          {searchCode && <button onClick={() => { setSearchCode(""); setConfirmCheckout(false); }} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "#f1f5f9", border: "none", borderRadius: "50%", width: 28, height: 28, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>}
+        </div>
+
+        {/* Saved confirmation */}
+        {savedMsg && (
+          <div style={{ marginBottom: 16, padding: "12px 18px", background: "#ecfdf5", borderRadius: 14, border: "1px solid #a7f3d0", textAlign: "center", fontSize: 14, fontWeight: 700, color: "#047857" }}>
+            ✅ Veckoschemat är sparat!
+          </div>
+        )}
+
+        {/* Result */}
+        {!searchCode.trim() ? (
+          <div style={{ ...card({ textAlign: "center", padding: 32 }) }}>
+            <div style={{ fontSize: 48, marginBottom: 8 }}>👆</div>
+            <div style={{ fontWeight: 600, color: "#94a3b8", fontSize: 15 }}>Skriv ditt barns kod ovan</div>
+            <div style={{ fontSize: 13, color: "#cbd5e1", marginTop: 4 }}>Koden är barnets initialer + födelseår</div>
+          </div>
+        ) : !foundChild ? (
+          <div style={{ ...card({ textAlign: "center", padding: 32 }) }}>
+            <div style={{ fontSize: 48, marginBottom: 8 }}>🤷</div>
+            <div style={{ fontWeight: 600, color: "#94a3b8", fontSize: 15 }}>Ingen elev med kod "{searchCode}"</div>
+            <div style={{ fontSize: 13, color: "#cbd5e1", marginTop: 4 }}>Dubbelkolla initialerna och födelseåret</div>
+          </div>
+        ) : (
+          <>
+            <div style={{ ...card({ padding: 0, overflow: "hidden", borderRadius: 24 }) }}>
+              {/* Child header */}
+              <div style={{ padding: "20px 20px", display: "flex", alignItems: "center", gap: 14, borderBottom: "1px solid #f1f5f9" }}>
+                <div style={{ width: 56, height: 56, borderRadius: 18, background: isGoneHome ? "#f3f4f6" : "#f5f3ff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, opacity: isGoneHome ? 0.6 : 1 }}>
+                  {av(foundChild.avatar).emoji}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 20, color: isGoneHome ? "#9ca3af" : "#1e293b" }}>{foundChild.name}</div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 12, background: "#f1f5f9", padding: "3px 10px", borderRadius: 8, color: "#64748b", fontWeight: 600 }}>{foundChild.group}</span>
+                    {isCheckedIn && (
+                      <span style={{ fontSize: 12, padding: "3px 10px", borderRadius: 8, fontWeight: 600, background: "#ecfdf5", color: "#10b981" }}>
+                        ✅ Incheckad {fmtClock(foundChild.checkedInAt)}
+                      </span>
+                    )}
+                    {isGoneHome && (
+                      <span style={{ fontSize: 12, padding: "3px 10px", borderRadius: 8, fontWeight: 600, background: "#f3f4f6", color: "#6b7280" }}>
+                        🏠 Gått hem {fmtClock(foundChild.checkedOutAt)}
+                      </span>
+                    )}
+                    {foundChild.status === "ej_incheckad" && (
+                      <span style={{ fontSize: 12, padding: "3px 10px", borderRadius: 8, fontWeight: 600, background: "#fffbeb", color: "#f59e0b" }}>
+                        ⏳ Ej incheckad
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Location */}
+              <div style={{ padding: "16px 20px" }}>
+                {isGoneHome ? (
+                  <div style={{ background: "#f9fafb", borderRadius: 16, padding: "20px", border: "2px solid #e5e7eb", textAlign: "center" }}>
+                    <span style={{ fontSize: 36 }}>🏠</span>
+                    <div style={{ fontWeight: 700, fontSize: 16, color: "#6b7280", marginTop: 6 }}>Gått hem</div>
+                    <div style={{ fontSize: 14, color: "#9ca3af", marginTop: 2 }}>Utcheckad kl. {fmtClock(foundChild.checkedOutAt)}</div>
+                    {foundChild.checkedInAt && <div style={{ fontSize: 12, color: "#d1d5db", marginTop: 6 }}>Var incheckad från {fmtClock(foundChild.checkedInAt)}</div>}
+                  </div>
+                ) : room ? (
+                  <div style={{ background: room.bg, borderRadius: 16, padding: "18px 20px", border: `2px solid ${room.color}30` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                      <span style={{ fontSize: 36 }}>{room.icon}</span>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 18, color: room.color }}>{room.name}</div>
+                        <div style={{ fontSize: 13, color: "#64748b" }}>{room.desc}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                      {room.activities.map((a, i) => (
+                        <span key={i} style={{ fontSize: 12, background: `${room.color}15`, color: room.color, padding: "4px 12px", borderRadius: 8, fontWeight: 600 }}>{a}</span>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 500 }}>
+                      {isOutdoor ? "🌳 Utomhus" : "🏠 Inomhus"} · Uppdaterad: {fmtTime(foundChild.updatedAt)}
+                    </div>
+                  </div>
+                ) : foundChild.status === "ej_incheckad" ? (
+                  <div style={{ background: "#fffbeb", borderRadius: 16, padding: "20px", border: "2px solid #fcd34d", textAlign: "center" }}>
+                    <span style={{ fontSize: 36 }}>⏳</span>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: "#92400e", marginTop: 6 }}>Inte incheckad ännu</div>
+                    <div style={{ fontSize: 13, color: "#a16207", marginTop: 2 }}>Barnet har inte ankommit till fritids</div>
+                  </div>
+                ) : (
+                  <div style={{ background: "#fef3c7", borderRadius: 16, padding: "20px", border: "2px solid #fcd34d", textAlign: "center" }}>
+                    <span style={{ fontSize: 36 }}>🤔</span>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: "#92400e", marginTop: 6 }}>Inget rum valt ännu</div>
+                    <div style={{ fontSize: 13, color: "#a16207", marginTop: 2 }}>Barnet har inte placerat sin avatar</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Today's schedule info */}
+              {todaySchedule?.time && isCheckedIn && (
+                <div style={{ padding: "0 20px 12px" }}>
+                  <div style={{ background: "#eef2ff", borderRadius: 14, padding: "12px 16px", border: "1px solid #c7d2fe", display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 20 }}>🕐</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#4338ca" }}>Idag: hem kl. {todaySchedule.time}</div>
+                      {todaySchedule.comment && <div style={{ fontSize: 12, color: "#6366f1", marginTop: 1 }}>💬 {todaySchedule.comment}</div>}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Checkout button for parent */}
+              {isCheckedIn && (
+                <div style={{ padding: "0 20px 20px" }}>
+                  {!confirmCheckout ? (
+                    <button onClick={() => setConfirmCheckout(true)}
+                      style={{ width: "100%", padding: 16, borderRadius: 16, border: "none", background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", color: "white", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: font, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 14px rgba(102,126,234,0.3)" }}>
+                      🏠 Hämta mitt barn
+                    </button>
+                  ) : (
+                    <div style={{ background: "#fef2f2", borderRadius: 16, padding: 16, border: "2px solid #fca5a5" }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: "#dc2626", marginBottom: 8, textAlign: "center" }}>Bekräfta hämtning</div>
+                      <div style={{ fontSize: 13, color: "#7f1d1d", marginBottom: 12, textAlign: "center" }}>
+                        {foundChild.name} checkas ut och markeras som "Gått hem" med klockslaget {new Date().toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={() => setConfirmCheckout(false)} style={{ flex: 1, padding: 12, borderRadius: 12, border: "1px solid #e2e8f0", background: "white", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: font, color: "#64748b" }}>Avbryt</button>
+                        <button onClick={handleParentCheckout} style={{ flex: 1, padding: 12, borderRadius: 12, border: "none", background: "#dc2626", color: "white", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: font }}>
+                          Ja, hämta 🏠
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── WEEKLY SCHEDULE CARD ── */}
+            <div style={{ ...card({ marginTop: 16, padding: 0, overflow: "hidden", borderRadius: 22 }) }}>
+              <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #f1f5f9" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 22 }}>📅</span>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: "#1e293b" }}>Veckoschema</div>
+                    <div style={{ fontSize: 12, color: "#94a3b8" }}>{daysWithTime > 0 ? `${daysWithTime} dagar inlagda` : "Inga tider inlagda"}</div>
+                  </div>
+                </div>
+                <button onClick={openScheduleEditor} style={{ background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: 12, padding: "8px 14px", cursor: "pointer", fontSize: 13, fontFamily: font, fontWeight: 700, color: "#4338ca" }}>
+                  ✏️ Ändra
+                </button>
+              </div>
+              {/* Mini schedule overview */}
+              <div style={{ padding: "12px 20px 16px" }}>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {WEEKDAYS.map((d) => {
+                    const dayData = schedule[d.id];
+                    const isToday = today === d.id;
+                    const hasTime = dayData?.time;
+                    return (
+                      <div key={d.id} style={{ flex: 1, textAlign: "center", padding: "8px 2px", borderRadius: 12, background: isToday ? (hasTime ? "#eef2ff" : "#fffbeb") : "#f8fafc", border: isToday ? (hasTime ? "2px solid #818cf8" : "2px solid #fcd34d") : "1px solid #f1f5f9" }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: isToday ? "#4338ca" : "#94a3b8", marginBottom: 2 }}>{d.short}</div>
+                        {hasTime ? (
+                          <>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: isToday ? "#4338ca" : "#475569" }}>{dayData.time}</div>
+                            {dayData.comment && <div style={{ fontSize: 9, color: "#6366f1", marginTop: 1, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 56, margin: "0 auto" }} title={dayData.comment}>💬</div>}
+                          </>
+                        ) : (
+                          <div style={{ fontSize: 12, color: "#d1d5db" }}>–</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Info */}
+        <div style={{ marginTop: 24, padding: "14px 18px", background: "white", borderRadius: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#475569", marginBottom: 4 }}>🔒 Integritet</div>
+          <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>
+            Du ser bara information om det barn vars kod du anger. Koden är barnets initialer + födelseår och delas ut av fritids.
+          </div>
+        </div>
+      </div>
+
+      {/* ── SCHEDULE EDITOR MODAL ── */}
+      {showSchedule && editSchedule && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 16, fontFamily: font }} onClick={() => setShowSchedule(false)}>
+          <div style={{ ...card({ maxWidth: 440, width: "100%", borderRadius: 28, padding: "28px 24px", maxHeight: "85vh", overflowY: "auto" }) }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <h3 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: "#1e293b" }}>📅 Veckoschema</h3>
+              <button onClick={() => setShowSchedule(false)} style={{ background: "#f1f5f9", border: "none", borderRadius: 10, width: 34, height: 34, cursor: "pointer", fontSize: 16 }}>✕</button>
+            </div>
+            <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 20px" }}>
+              Ange vilken tid {foundChild?.name?.split(" ")[0]} ska gå hem varje dag. Lägg till en kommentar om barnet t.ex. ska gå hem själv.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {WEEKDAYS.map((d) => {
+                const dayData = editSchedule[d.id] || { time: "", comment: "" };
+                const isToday = today === d.id;
+                return (
+                  <div key={d.id} style={{ padding: "14px 16px", borderRadius: 16, border: isToday ? "2px solid #818cf8" : "1px solid #e2e8f0", background: isToday ? "#fafafe" : "white" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontWeight: 700, fontSize: 14, color: isToday ? "#4338ca" : "#1e293b" }}>{d.label}</span>
+                        {isToday && <span style={{ fontSize: 10, background: "#818cf8", color: "white", padding: "2px 8px", borderRadius: 6, fontWeight: 700 }}>IDAG</span>}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <div style={{ position: "relative", flex: "0 0 auto" }}>
+                        <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 14, pointerEvents: "none" }}>🕐</span>
+                        <input type="time" value={dayData.time} onChange={(e) => updateDay(d.id, "time", e.target.value)}
+                          style={{ ...input({ paddingLeft: 32, width: 120, fontSize: 15, fontWeight: 700, fontFamily: "monospace", textAlign: "center" }) }} />
+                      </div>
+                      {dayData.time && (
+                        <button onClick={() => updateDay(d.id, "time", "")} style={{ background: "#fef2f2", border: "none", borderRadius: 8, padding: "8px 8px", cursor: "pointer", fontSize: 12, color: "#ef4444", flexShrink: 0 }}>✕</button>
+                      )}
+                    </div>
+                    {dayData.time && (
+                      <div style={{ marginTop: 8 }}>
+                        <input value={dayData.comment} onChange={(e) => updateDay(d.id, "comment", e.target.value)} placeholder="T.ex. Ska gå hem själv, Mormor hämtar..."
+                          style={{ ...input({ fontSize: 13, padding: "8px 12px", background: "#f8fafc" }) }} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+              <button onClick={() => setShowSchedule(false)} style={{ flex: 1, padding: 14, borderRadius: 14, border: "1px solid #e2e8f0", background: "white", fontWeight: 600, fontSize: 15, cursor: "pointer", fontFamily: font, color: "#64748b" }}>Avbryt</button>
+              <button onClick={saveSchedule} style={{ flex: 1, padding: 14, borderRadius: 14, border: "none", background: "#667eea", color: "white", fontWeight: 700, fontSize: 15, cursor: "pointer", fontFamily: font }}>
+                Spara schema ✅
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PERMISSIONS VIEW (info panel)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function PermissionsInfo({ onClose }) {
+  const roles = [
+    { id: "child", label: "Barn", icon: "😊", color: "#8B5CF6",
+      can: ["Checka in/ut sig själv", "Placera sin avatar i rum", "Se alla rum och aktiviteter", "Se andra barn i samma rum"],
+      cannot: ["Lägga till/ta bort elever", "Se pedagogdashboard", "Se andra barns detaljer"] },
+    { id: "pedagogue", label: "Pedagog", icon: "👩‍🏫", color: "#10B981",
+      can: ["Checka in/ut elever", "Placera elever i rum", "Se realtidsöversikt", "Hämtningsnotiser från schema", "Lägga till/redigera/ta bort elever"],
+      cannot: ["Se vårdnadshavares inloggning"] },
+    { id: "parent", label: "Vårdnadshavare", icon: "👨‍👩‍👧", color: "#3B82F6",
+      can: ["Söka sitt barn via kod", "Se barnets rumsplacering", "Hämta/checka ut sitt barn", "Lägga in veckoschema med hämtningstider"],
+      cannot: ["Se andra barn utan kod", "Ändra elevuppgifter", "Se pedagogdashboard"] },
+    { id: "admin", label: "Admin", icon: "⚙️", color: "#F59E0B",
+      can: ["Allt pedagoger kan", "Hantera grupper och rum", "Hantera familjekoder", "Systemkonfiguration"],
+      cannot: ["Placera barns avatar"] },
+  ];
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 16, fontFamily: font }} onClick={onClose}>
+      <div style={{ ...card({ maxWidth: 560, width: "100%", borderRadius: 28, padding: "28px 24px", maxHeight: "85vh", overflowY: "auto" }) }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+          <h3 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: "#1e293b" }}>🔐 Behörigheter</h3>
+          <button onClick={onClose} style={{ background: "#f1f5f9", border: "none", borderRadius: 10, width: 34, height: 34, cursor: "pointer", fontSize: 16 }}>✕</button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {roles.map((r) => (
+            <div key={r.id} style={{ border: `2px solid ${r.color}25`, borderRadius: 18, overflow: "hidden" }}>
+              <div style={{ background: `${r.color}10`, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 22 }}>{r.icon}</span>
+                <span style={{ fontWeight: 700, fontSize: 16, color: r.color }}>{r.label}</span>
+              </div>
+              <div style={{ padding: "12px 16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#10b981", marginBottom: 4 }}>✅ Kan</div>
+                  {r.can.map((c, i) => <div key={i} style={{ fontSize: 12, color: "#475569", padding: "2px 0" }}>• {c}</div>)}
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#ef4444", marginBottom: 4 }}>🚫 Kan inte</div>
+                  {r.cannot.map((c, i) => <div key={i} style={{ fontSize: 12, color: "#94a3b8", padding: "2px 0" }}>• {c}</div>)}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function FritidsApp() {
+  const [session, setSession] = useState(null); // { role, user }
+  const [allChildren, setAllChildren] = useState(INITIAL_CHILDREN);
+  const [showPermissions, setShowPermissions] = useState(false);
+
+  const handleLogin = ({ role, user }) => setSession({ role, user });
+  const handleLogout = () => setSession(null);
+
+  if (!session) {
+    return <LoginScreen onLogin={handleLogin} children={allChildren} />;
+  }
+
+  return (
+    <div style={{ fontFamily: font }}>
+      {/* Top nav */}
+      <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 20px", background: grad, color: "white", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 2px 12px rgba(0,0,0,0.15)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 24 }}>🏠</span>
+          <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.5px" }}>Fritidsappen</span>
+          <span style={{ fontSize: 11, background: "rgba(255,255,255,0.2)", padding: "3px 10px", borderRadius: 10, fontWeight: 600 }}>
+            {session.role === "child" ? "😊 " + session.user.name : session.role === "pedagogue" ? "👩‍🏫 " + session.user.name : "👨‍👩‍👧 " + session.user.name}
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <button onClick={() => setShowPermissions(true)} style={{ ...btn(false), padding: "6px 12px", fontSize: 12, border: "1px solid rgba(255,255,255,0.25)" }}>🔐</button>
+          <button onClick={handleLogout} style={{ ...btn(false), padding: "8px 14px", fontSize: 13, border: "1px solid rgba(255,255,255,0.25)" }}>Logga ut</button>
+        </div>
+      </nav>
+
+      {/* Content */}
+      {session.role === "child" && <ChildView user={session.user} allChildren={allChildren} setAllChildren={setAllChildren} />}
+      {session.role === "pedagogue" && <PedagogueView allChildren={allChildren} setAllChildren={setAllChildren} onLogout={handleLogout} />}
+      {session.role === "parent" && <ParentView parent={session.user} allChildren={allChildren} setAllChildren={setAllChildren} />}
+
+      {/* Permissions modal */}
+      {showPermissions && <PermissionsInfo onClose={() => setShowPermissions(false)} />}
+    </div>
+  );
+}
+
+
+// Mount the app
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(FritidsApp));
+  </script>
+</body>
+</html>
