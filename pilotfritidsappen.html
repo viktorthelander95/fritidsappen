@@ -848,6 +848,7 @@ function PedagogueView({ allChildren, setAllChildren, onLogout }) {
         {[
           { id: "overview", label: "📋 Översikt" },
           { id: "attendance", label: "✅ Närvaro" },
+          { id: "toplist", label: "🏆 Topplistan" },
           { id: "students", label: "👥 Elever" },
         ].map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
@@ -1169,6 +1170,80 @@ function PedagogueView({ allChildren, setAllChildren, onLogout }) {
           )}
         </div>
       )}
+
+      {/* ── TOPLIST TAB ── */}
+      {tab === "toplist" && (() => {
+        const top10 = [...allChildren].sort((a, b) => (b.maxiKronor || 0) - (a.maxiKronor || 0)).slice(0, 10);
+        const medals = ["🥇", "🥈", "🥉"];
+        return (
+          <div style={{ padding: "20px 16px" }}>
+            <h2 style={{ fontSize: 22, fontWeight: 800, color: "#1e293b", margin: "0 0 4px" }}>🏆 Topplistan</h2>
+            <p style={{ color: "#64748b", margin: "0 0 20px", fontSize: 13 }}>Topp 10 elever med flest Maxi-kronor</p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {top10.map((child, i) => {
+                const mk = child.maxiKronor || 0;
+                const fk = child.fritidsKronor || 0;
+                const sk = child.streak || 0;
+                const isTop3 = i < 3;
+                return (
+                  <div key={child.id} style={{
+                    ...card({
+                      padding: "16px 20px",
+                      display: "flex", alignItems: "center", gap: 14,
+                      border: isTop3 ? "2px solid #fcd34d" : "1px solid #f1f5f9",
+                      background: i === 0 ? "linear-gradient(135deg, #fffbeb, #fef3c7)" : i === 1 ? "linear-gradient(135deg, #f8fafc, #f1f5f9)" : i === 2 ? "linear-gradient(135deg, #fff7ed, #ffedd5)" : "white",
+                    })
+                  }}>
+                    {/* Rank */}
+                    <div style={{ width: 40, textAlign: "center", flexShrink: 0 }}>
+                      {isTop3 ? (
+                        <span style={{ fontSize: 28 }}>{medals[i]}</span>
+                      ) : (
+                        <span style={{ fontSize: 20, fontWeight: 800, color: "#94a3b8" }}>{i + 1}</span>
+                      )}
+                    </div>
+                    {/* Avatar */}
+                    <div style={{ width: 48, height: 48, borderRadius: 16, background: isTop3 ? "#fffbeb" : "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0, border: isTop3 ? "2px solid #fcd34d" : "none" }}>
+                      {av(child.avatar).emoji}
+                    </div>
+                    {/* Info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 15, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{child.name}</div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 3, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 11, background: "#f1f5f9", padding: "2px 8px", borderRadius: 6, color: "#64748b", fontWeight: 600 }}>{child.group}</span>
+                        {fk > 0 && (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 10, background: "#f5f3ff", padding: "1px 6px", borderRadius: 6, border: "1px solid #a78bfa", fontWeight: 700, color: "#5b21b6" }}>
+                            <span style={{ width: 12, height: 12, borderRadius: "50%", background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 6, fontWeight: 900, color: "white" }}>F</span>
+                            {fk}
+                          </span>
+                        )}
+                        {sk > 0 && (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 10, background: "#fef2f2", padding: "1px 6px", borderRadius: 6, border: "1px solid #fca5a5", fontWeight: 700, color: "#dc2626" }}>
+                            {streakEmoji(sk)} {sk}d
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {/* Maxi-kronor score */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(135deg, #fbbf24, #f59e0b)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900, color: "white", boxShadow: "0 2px 6px rgba(245,158,11,0.4)" }}>M</div>
+                      <span style={{ fontSize: 22, fontWeight: 800, color: "#92400e" }}>{mk}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              {top10.every(c => !(c.maxiKronor || 0)) && (
+                <div style={{ ...card({ textAlign: "center", padding: 32 }) }}>
+                  <div style={{ fontSize: 48, marginBottom: 8 }}>🏆</div>
+                  <div style={{ fontWeight: 600, color: "#94a3b8", fontSize: 15 }}>Inga kronor ännu!</div>
+                  <div style={{ fontSize: 13, color: "#cbd5e1", marginTop: 4 }}>Eleverna får Maxi-kronor genom att checka in och ut sig</div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── STUDENTS TAB ── */}
       {tab === "students" && (
