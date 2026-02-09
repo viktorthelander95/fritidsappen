@@ -235,6 +235,62 @@ const calcStreak = (child) => {
 };
 const streakEmoji = (n) => n >= 7 ? "💎" : n >= 5 ? "🔥" : n >= 3 ? "⭐" : "✨";
 
+// ── Avatar Builder ──
+const SKIN_TONES = [
+  { id: "f2d3b1", color: "#f2d3b1" }, { id: "e0ac69", color: "#e0ac69" },
+  { id: "c68642", color: "#c68642" }, { id: "d4a574", color: "#d4a574" },
+  { id: "8d5524", color: "#8d5524" }, { id: "614335", color: "#614335" },
+];
+const HAIR_STYLES = [
+  { id: "short01", label: "Kort 1" }, { id: "short02", label: "Kort 2" },
+  { id: "short04", label: "Kort 3" }, { id: "short07", label: "Kort 4" },
+  { id: "long01", label: "Långt 1" }, { id: "long03", label: "Långt 2" },
+  { id: "long07", label: "Långt 3" }, { id: "long09", label: "Långt 4" },
+];
+const HAIR_COLORS = [
+  { id: "2c1b18", color: "#2c1b18" }, { id: "85461e", color: "#85461e" },
+  { id: "d6b370", color: "#d6b370" }, { id: "cb6820", color: "#cb6820" },
+  { id: "e8e1e1", color: "#e8e1e1" }, { id: "d926b4", color: "#d926b4" },
+];
+const EYE_STYLES = ["variant01","variant02","variant05","variant12","variant17","variant20","variant26"];
+const MOUTH_STYLES = ["variant01","variant02","variant06","variant12","variant20","variant30"];
+
+const buildAvatarUrl = (o) => {
+  const p = new URLSearchParams();
+  if (o.skinColor) p.set("skinColor", o.skinColor);
+  if (o.hair) p.set("hair", o.hair);
+  if (o.hairColor) p.set("hairColor", o.hairColor);
+  if (o.eyes) p.set("eyes", o.eyes);
+  if (o.mouth) p.set("mouth", o.mouth);
+  p.set("radius", "50");
+  return "https://api.dicebear.com/9.x/adventurer/svg?" + p.toString();
+};
+
+const cartoonize = (canvas) => {
+  const ctx = canvas.getContext("2d");
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = img.data;
+  const step = 255 / 8;
+  for (let i = 0; i < d.length; i += 4) {
+    d[i] = Math.round(d[i] / step) * step;
+    d[i+1] = Math.round(d[i+1] / step) * step;
+    d[i+2] = Math.round(d[i+2] / step) * step;
+    const avg = (d[i] + d[i+1] + d[i+2]) / 3;
+    d[i] = Math.min(255, Math.max(0, avg + (d[i] - avg) * 1.5));
+    d[i+1] = Math.min(255, Math.max(0, avg + (d[i+1] - avg) * 1.5));
+    d[i+2] = Math.min(255, Math.max(0, avg + (d[i+2] - avg) * 1.5));
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas.toDataURL("image/jpeg", 0.7);
+};
+
+const CustomAvatar = ({ child, size }) => {
+  const s = size || 24;
+  if (child.customAvatar?.type === "builder") return React.createElement("img", { src: child.customAvatar.url, alt: "", style: { width: s, height: s, borderRadius: "50%", background: "#f1f5f9" } });
+  if (child.customAvatar?.type === "photo") return React.createElement("img", { src: child.customAvatar.data, alt: "", style: { width: s, height: s, borderRadius: "50%", objectFit: "cover" } });
+  return React.createElement("span", { style: { fontSize: s * 0.75 } }, av(child.avatar).emoji);
+};
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SHARED STYLES
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -398,6 +454,219 @@ function LoginScreen({ onLogin, children: allChildren }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// PROFILE MODAL – Avatar builder + Camera photo
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function ProfileModal({ child, onSave, onClose }) {
+  const [tab, setTab] = useState("builder");
+  const [skinColor, setSkinColor] = useState("f2d3b1");
+  const [hair, setHair] = useState("short01");
+  const [hairColor, setHairColor] = useState("2c1b18");
+  const [eyes, setEyes] = useState("variant01");
+  const [mouth, setMouth] = useState("variant01");
+  const [cameraActive, setCameraActive] = useState(false);
+  const [capturedPhoto, setCapturedPhoto] = useState(null);
+  const [cameraError, setCameraError] = useState("");
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+
+  const avatarUrl = buildAvatarUrl({ skinColor, hair, hairColor, eyes, mouth });
+
+  useEffect(() => {
+    if (child.customAvatar?.type === "builder" && child.customAvatar.options) {
+      const o = child.customAvatar.options;
+      if (o.skinColor) setSkinColor(o.skinColor);
+      if (o.hair) setHair(o.hair);
+      if (o.hairColor) setHairColor(o.hairColor);
+      if (o.eyes) setEyes(o.eyes);
+      if (o.mouth) setMouth(o.mouth);
+    }
+  }, []);
+
+  useEffect(() => { return () => stopCamera(); }, []);
+
+  const startCamera = async () => {
+    try {
+      setCameraError("");
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 300, height: 300 } });
+      streamRef.current = stream;
+      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
+      setCameraActive(true);
+    } catch (err) { setCameraError("Kunde inte starta kameran. Ge appen tillgång till kameran i din webbläsare."); }
+  };
+
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    canvas.width = 200; canvas.height = 200;
+    const ctx = canvas.getContext("2d");
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const side = Math.min(vw, vh);
+    ctx.drawImage(video, (vw - side) / 2, (vh - side) / 2, side, side, 0, 0, 200, 200);
+    const filtered = cartoonize(canvas);
+    setCapturedPhoto(filtered);
+    stopCamera();
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    setCameraActive(false);
+  };
+
+  const saveBuilder = () => { onSave({ type: "builder", url: avatarUrl, options: { skinColor, hair, hairColor, eyes, mouth } }); };
+  const savePhoto = () => { if (capturedPhoto) onSave({ type: "photo", data: capturedPhoto }); };
+  const resetAvatar = () => { onSave(null); };
+
+  const optBtn = (active, color = "#667eea") => ({ width: 40, height: 40, borderRadius: 12, border: active ? `3px solid ${color}` : "2px solid #e2e8f0", background: active ? `${color}15` : "#f8fafc", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontFamily: font, transition: "all 0.15s", padding: 0 });
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 12, fontFamily: font }} onClick={onClose}>
+      <div style={{ ...card({ maxWidth: 440, width: "100%", borderRadius: 28, padding: "24px 20px", maxHeight: "90vh", overflowY: "auto" }) }} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <h3 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: "#1e293b" }}>🎨 Min profil</h3>
+          <button onClick={onClose} style={{ background: "#f1f5f9", border: "none", borderRadius: 10, width: 34, height: 34, cursor: "pointer", fontSize: 16 }}>✕</button>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+          <button onClick={() => { setTab("builder"); stopCamera(); }} style={{ ...pillBtn(tab === "builder", "#8B5CF6"), flex: 1 }}>🎭 Bygg avatar</button>
+          <button onClick={() => setTab("photo")} style={{ ...pillBtn(tab === "photo", "#10b981"), flex: 1 }}>📸 Ta foto</button>
+        </div>
+
+        {/* ── BUILDER TAB ── */}
+        {tab === "builder" && (
+          <div>
+            {/* Live preview */}
+            <div style={{ textAlign: "center", marginBottom: 16 }}>
+              <img src={avatarUrl} alt="Avatar" style={{ width: 120, height: 120, borderRadius: "50%", background: "#f1f5f9", boxShadow: "0 4px 20px rgba(0,0,0,0.1)", border: "4px solid #8B5CF6" }} />
+            </div>
+
+            {/* Skin tone */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>Hudfärg</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {SKIN_TONES.map(t => (
+                  <button key={t.id} onClick={() => setSkinColor(t.id)} style={{ ...optBtn(skinColor === t.id, t.color), background: t.color, border: skinColor === t.id ? "3px solid #1e293b" : "2px solid #e2e8f0" }} />
+                ))}
+              </div>
+            </div>
+
+            {/* Hair style */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>Frisyr</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {HAIR_STYLES.map(h => (
+                  <button key={h.id} onClick={() => setHair(h.id)} style={{ ...optBtn(hair === h.id, "#8B5CF6"), fontSize: 10, fontWeight: 700, color: hair === h.id ? "#8B5CF6" : "#94a3b8" }}>
+                    {h.label.split(" ")[0][0]}{h.label.split(" ")[1]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Hair color */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>Hårfärg</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {HAIR_COLORS.map(c => (
+                  <button key={c.id} onClick={() => setHairColor(c.id)} style={{ ...optBtn(hairColor === c.id, c.color), background: c.color, border: hairColor === c.id ? "3px solid #1e293b" : "2px solid #e2e8f0" }} />
+                ))}
+              </div>
+            </div>
+
+            {/* Eyes */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>Ögon</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {EYE_STYLES.map((e, i) => (
+                  <button key={e} onClick={() => setEyes(e)} style={{ ...optBtn(eyes === e, "#3b82f6"), fontSize: 11, fontWeight: 700, color: eyes === e ? "#3b82f6" : "#94a3b8" }}>
+                    {i + 1}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Mouth */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>Mun</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {MOUTH_STYLES.map((m, i) => (
+                  <button key={m} onClick={() => setMouth(m)} style={{ ...optBtn(mouth === m, "#ec4899"), fontSize: 11, fontWeight: 700, color: mouth === m ? "#ec4899" : "#94a3b8" }}>
+                    {i + 1}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button onClick={saveBuilder} style={{ width: "100%", padding: 14, borderRadius: 16, border: "none", background: "linear-gradient(135deg, #8B5CF6, #7c3aed)", color: "white", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: font }}>
+              Spara min avatar ✨
+            </button>
+          </div>
+        )}
+
+        {/* ── PHOTO TAB ── */}
+        {tab === "photo" && (
+          <div>
+            <div style={{ textAlign: "center" }}>
+              {!cameraActive && !capturedPhoto && (
+                <div>
+                  <div style={{ fontSize: 64, marginBottom: 12 }}>📸</div>
+                  <p style={{ color: "#64748b", fontSize: 14, margin: "0 0 16px" }}>Ta en selfie! Bilden får ett tecknat filter.</p>
+                  <button onClick={startCamera} style={{ padding: "14px 28px", borderRadius: 16, border: "none", background: "linear-gradient(135deg, #10b981, #059669)", color: "white", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: font }}>
+                    Starta kameran 📷
+                  </button>
+                  {cameraError && <div style={{ marginTop: 12, padding: "10px 16px", background: "#fef2f2", borderRadius: 12, color: "#dc2626", fontSize: 13, fontWeight: 600 }}>⚠️ {cameraError}</div>}
+                </div>
+              )}
+
+              {cameraActive && (
+                <div>
+                  <div style={{ position: "relative", display: "inline-block", marginBottom: 16 }}>
+                    <video ref={videoRef} autoPlay playsInline muted style={{ width: 220, height: 220, borderRadius: "50%", objectFit: "cover", border: "4px solid #10b981", boxShadow: "0 4px 20px rgba(0,0,0,0.15)" }} />
+                    <div style={{ position: "absolute", bottom: -4, left: "50%", transform: "translateX(-50%)", background: "#10b981", color: "white", padding: "4px 12px", borderRadius: 10, fontSize: 11, fontWeight: 700 }}>LIVE</div>
+                  </div>
+                  <div>
+                    <button onClick={capturePhoto} style={{ padding: "16px 32px", borderRadius: 20, border: "none", background: "linear-gradient(135deg, #ef4444, #dc2626)", color: "white", fontSize: 18, fontWeight: 800, cursor: "pointer", fontFamily: font, boxShadow: "0 6px 20px rgba(239,68,68,0.3)" }}>
+                      📸 Ta kort!
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {capturedPhoto && (
+                <div>
+                  <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 10px", fontWeight: 600 }}>Tecknat filter applicerat!</p>
+                  <img src={capturedPhoto} alt="Foto" style={{ width: 180, height: 180, borderRadius: "50%", objectFit: "cover", border: "4px solid #8B5CF6", boxShadow: "0 4px 20px rgba(0,0,0,0.15)", marginBottom: 16 }} />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => { setCapturedPhoto(null); startCamera(); }} style={{ flex: 1, padding: 12, borderRadius: 14, border: "1px solid #e2e8f0", background: "white", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: font, color: "#64748b" }}>
+                      Ta om 🔄
+                    </button>
+                    <button onClick={savePhoto} style={{ flex: 1, padding: 12, borderRadius: 14, border: "none", background: "linear-gradient(135deg, #8B5CF6, #7c3aed)", color: "white", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: font }}>
+                      Spara ✨
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <canvas ref={canvasRef} style={{ display: "none" }} />
+          </div>
+        )}
+
+        {/* Reset option */}
+        {child.customAvatar && (
+          <button onClick={resetAvatar} style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #e2e8f0", background: "white", fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: font, color: "#94a3b8", marginTop: 10 }}>
+            Återgå till {av(child.avatar).emoji} djuravatar
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // CHILD VIEW – Avatar placement
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -412,6 +681,12 @@ function ChildView({ user, allChildren, setAllChildren }) {
   const [checkInAnim, setCheckInAnim] = useState(false);
   const [coinAnim, setCoinAnim] = useState(null); // "maxi" | "fritids" | "streak"
   const [showWallet, setShowWallet] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+
+  const handleSaveAvatar = (customAvatar) => {
+    setAllChildren((prev) => prev.map((c) => c.id === user.id ? { ...c, customAvatar } : c));
+    setShowProfile(false);
+  };
 
   // Belöningsdata (med default-värden)
   const maxiKronor = liveUser.maxiKronor || 0;
@@ -469,8 +744,11 @@ function ChildView({ user, allChildren, setAllChildren }) {
     return (
       <div style={{ minHeight: "100vh", background: "linear-gradient(180deg, #f0f4ff 0%, #fdf2f8 50%, #fef9c3 100%)", fontFamily: font, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
         <div style={{ maxWidth: 400, width: "100%", textAlign: "center" }}>
-          <div style={{ fontSize: 80, marginBottom: 12, animation: checkInAnim ? "bounceIn 0.6s ease-out" : "none" }}>
-            {isGoneHome ? "🏠" : av(user.avatar).emoji}
+          <div style={{ fontSize: 80, marginBottom: 12, animation: checkInAnim ? "bounceIn 0.6s ease-out" : "none", position: "relative", display: "inline-block" }}>
+            {isGoneHome ? "🏠" : <CustomAvatar child={liveUser} size={80} />}
+            {!isGoneHome && (
+              <button onClick={() => setShowProfile(true)} style={{ position: "absolute", bottom: -4, right: -4, width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(135deg, #667eea, #764ba2)", border: "3px solid white", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, padding: 0, boxShadow: "0 2px 8px rgba(102,126,234,0.4)" }}>🎨</button>
+            )}
           </div>
           <h2 style={{ fontSize: 26, fontWeight: 800, color: "#1e293b", margin: "0 0 4px" }}>
             Hej {user.name.split(" ")[0]}!
@@ -515,8 +793,8 @@ function ChildView({ user, allChildren, setAllChildren }) {
           <div style={{ marginTop: 8, fontSize: 12, color: "#10b981", fontWeight: 600 }}>
             +1 Maxi-krona vid incheckning!
           </div>
-          <div style={{ marginTop: 8, fontSize: 12, color: "#cbd5e1" }}>
-            {av(user.avatar).emoji} {user.code}
+          <div style={{ marginTop: 8, fontSize: 12, color: "#cbd5e1", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+            <CustomAvatar child={liveUser} size={16} /> {user.code}
           </div>
         </div>
 
@@ -538,6 +816,9 @@ function ChildView({ user, allChildren, setAllChildren }) {
           @keyframes bounceIn { 0% { transform: scale(0); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
           @keyframes coinFloat { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } 30% { transform: translate(-50%, -50%) scale(1); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -100%) scale(0.8); } }
         `}</style>
+
+        {/* Profile Modal */}
+        {showProfile && <ProfileModal child={liveUser} onSave={handleSaveAvatar} onClose={() => setShowProfile(false)} />}
       </div>
     );
   }
@@ -552,10 +833,11 @@ function ChildView({ user, allChildren, setAllChildren }) {
           background: "white", borderRadius: 24, padding: "10px 16px 10px 24px", display: "flex", alignItems: "center", gap: 12,
           boxShadow: "0 4px 20px rgba(0,0,0,0.1)", border: currentRoom ? `3px solid ${roomObj?.color || "#667eea"}` : "3px solid #fcd34d",
         }}>
-          <div style={{ fontSize: 36, cursor: "grab", userSelect: "none", transition: "transform 0.2s", ...(dragTarget ? { transform: "scale(1.2)" } : {}) }}
+          <div style={{ fontSize: 36, cursor: "grab", userSelect: "none", transition: "transform 0.2s", position: "relative", ...(dragTarget ? { transform: "scale(1.2)" } : {}) }}
             draggable onDragStart={(e) => { e.dataTransfer.setData("text/plain", "avatar"); }}
             onDragEnd={() => setDragTarget(null)}>
-            {av(user.avatar).emoji}
+            <CustomAvatar child={liveUser} size={36} />
+            <button onClick={(e) => { e.stopPropagation(); setShowProfile(true); }} style={{ position: "absolute", bottom: -4, right: -4, width: 20, height: 20, borderRadius: "50%", background: "linear-gradient(135deg, #667eea, #764ba2)", border: "2px solid white", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, padding: 0, boxShadow: "0 1px 4px rgba(0,0,0,0.2)" }}>🎨</button>
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: 15, color: "#1e293b" }}>{user.name}</div>
@@ -639,7 +921,7 @@ function ChildView({ user, allChildren, setAllChildren }) {
                     <span style={{ fontSize: 14, fontWeight: 700, color: "#1e293b", textAlign: "center", lineHeight: 1.2 }}>{room.name}</span>
                     {/* Mini avatars */}
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 2, justifyContent: "center", marginTop: 6, minHeight: 18 }}>
-                      {here.map((c) => <span key={c.id} style={{ fontSize: 14 }} title={c.name}>{av(c.avatar).emoji}</span>)}
+                      {here.map((c) => <span key={c.id} title={c.name}><CustomAvatar child={c} size={18} /></span>)}
                     </div>
                     {/* Activities */}
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 3, justifyContent: "center", marginTop: 6 }}>
@@ -700,6 +982,9 @@ function ChildView({ user, allChildren, setAllChildren }) {
         @keyframes fadeInOut { 0% { opacity: 0; } 15% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
         @keyframes coinFloat { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } 30% { transform: translate(-50%, -50%) scale(1); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -100%) scale(0.8); } }
       `}</style>
+
+      {/* Profile Modal */}
+      {showProfile && <ProfileModal child={liveUser} onSave={handleSaveAvatar} onClose={() => setShowProfile(false)} />}
     </div>
   );
 }
