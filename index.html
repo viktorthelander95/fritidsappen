@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Fritids Incheckning</title>
+  <meta name="theme-color" content="#7C6EE6">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏠</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: #F8F7FC;
+      min-height: 100vh;
+      min-height: 100dvh;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    #root { min-height: 100vh; min-height: 100dvh; }
+
+    /* Loading spinner */
+    #loading {
+      display: flex; align-items: center; justify-content: center;
+      height: 100vh; flex-direction: column; gap: 16px;
+      font-family: 'Inter', sans-serif; color: #7C6EE6;
+    }
+    #loading .spinner {
+      width: 48px; height: 48px; border: 4px solid #E8E6F0;
+      border-top: 4px solid #7C6EE6; border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #D0D0D8; border-radius: 3px; }
+
+    /* Animations */
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes modalIn { from { opacity: 0; transform: scale(0.93) translateY(12px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+    @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(20px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    @keyframes toastOut { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-10px) scale(0.95); } }
+    @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+
+    /* Fullscreen support */
+    body.fullscreen { background: #F8F7FC; }
+
+    /* Touch-friendly overrides */
+    button { touch-action: manipulation; }
+    input { font-size: 16px !important; /* prevent iOS zoom */ }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div id="loading">
+      <div class="spinner"></div>
+      <div style="font-weight:600;font-size:18px">Laddar Fritids Incheckning...</div>
+    </div>
+  </div>
+
+  <script type="text/babel" data-type="module">
+    const { useState, useRef, useMemo, useEffect, useCallback } = React;
+
+    // ============================================================
+    // KONFIGURATION
+    // ============================================================
+    const ROOMS = [
+      { id: "y-rummet", name: "Y-rummet", icon: "\u{1F3AE}", color: "#7C6EE6" },
+      { id: "x-rummet", name: "X-rummet", icon: "\u{1F4DA}", color: "#9B7FD4" },
+      { id: "pysselrummet", name: "Pysselrummet", icon: "\u2702\uFE0F", color: "#E88BA7" },
+      { id: "byggrummet", name: "Byggrummet", icon: "\u{1F9F1}", color: "#F0A95B" },
+      { id: "y-grupprummet", name: "Y-grupprummet", icon: "\u{1F5E3}\uFE0F", color: "#5CC7A0" },
+      { id: "idrottshallen", name: "Idrottshallen", icon: "\u26BD", color: "#E87070" },
+      { id: "utomhus", name: "Utomhus", icon: "\u{1F333}", color: "#6BBF6B" },
+      { id: "fotbollsplanen", name: "Fotbollsplanen", icon: "\u26BD", color: "#6BA3D6" },
+      { id: "soffan", name: "Soffan", icon: "\u{1F6CB}\uFE0F", color: "#B08BD6" },
+      { id: "dansrummet", name: "Dansrummet", icon: "\u{1F483}", color: "#E87098" },
+    ];
+
+    const HAIR_STYLES = ["kort", "l\u00E5ng", "lockar", "keps", "tofs", "mohawk"];
+    const HAIR_LABELS = { kort: "Kort", "l\u00E5ng": "L\u00E5ng", lockar: "Lockar", keps: "Keps", tofs: "Tofs", mohawk: "Mohawk" };
+    const SKIN_TONES = ["#FDE8D0", "#F5D0A9", "#E8BA89", "#C9956A", "#A0714E", "#7A5438"];
+    const HAIR_COLORS = ["#3E2723", "#5D4037", "#C0725E", "#E2C08D", "#F5E6CA", "#B85450", "#5B87C2", "#8E68AB"];
+    const SHIRT_COLORS = ["#E87070", "#F0A95B", "#E8D05B", "#6BBF6B", "#6BA3D6", "#9B7FD4", "#E88BA7", "#5CC7A0", "#8E9AAF", "#4A4A5A"];
+    const EYE_COLORS = ["#3B3128", "#5B7A4A", "#5B82B5", "#8B6B4A", "#6B5B8A"];
+    const ACCESSORIES = ["star", "heart", "moon", "flower", "lightning"];
+    const ACCESSORY_LABELS = { star: "Stj\u00E4rna", heart: "Hj\u00E4rta", moon: "M\u00E5ne", flower: "Blomma", lightning: "Blixt" };
+    const ACCESSORY_EMOJI = { star: "\u2B50", heart: "\u2764\uFE0F", moon: "\u{1F319}", flower: "\u{1F338}", lightning: "\u26A1" };
+    const MOODS = ["glad", "koncentrerad", "uppmuntrande"];
+
+    const STORAGE_KEY = "fritids_incheckning_data";
+    const LOG_KEY = "fritids_incheckning_log";
+
+    const DEFAULT_KIDS = [
+      { id: 1, name: "Alice", hair: "l\u00E5ng", skinTone: "#FDE8D0", hairColor: "#E2C08D", shirtColor: "#E88BA7", eyeColor: "#5B82B5", accessory: "star" },
+      { id: 2, name: "Erik", hair: "kort", skinTone: "#F5D0A9", hairColor: "#3E2723", shirtColor: "#6BA3D6", eyeColor: "#3B3128", accessory: "lightning" },
+      { id: 3, name: "Fatima", hair: "lockar", skinTone: "#C9956A", hairColor: "#3E2723", shirtColor: "#9B7FD4", eyeColor: "#8B6B4A", accessory: "moon" },
+      { id: 4, name: "Oscar", hair: "keps", skinTone: "#FDE8D0", hairColor: "#5D4037", shirtColor: "#6BBF6B", eyeColor: "#5B7A4A", accessory: "heart" },
+      { id: 5, name: "Lina", hair: "tofs", skinTone: "#E8BA89", hairColor: "#C0725E", shirtColor: "#E8D05B", eyeColor: "#5B82B5", accessory: "flower" },
+      { id: 6, name: "Noah", hair: "mohawk", skinTone: "#F5D0A9", hairColor: "#B85450", shirtColor: "#E87070", eyeColor: "#3B3128", accessory: "star" },
+    ];
+
+    // ============================================================
+    // HJÄLPFUNKTIONER
+    // ============================================================
+    function loadData() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (e) { console.warn("Kunde inte l\u00E4sa sparad data:", e); }
+      return null;
+    }
+
+    function saveData(kids) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(kids)); }
+      catch (e) { console.warn("Kunde inte spara data:", e); }
+    }
+
+    function addLog(msg) {
+      try {
+        const logs = JSON.parse(localStorage.getItem(LOG_KEY) || "[]");
+        logs.unshift({ time: new Date().toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" }), msg });
+        localStorage.setItem(LOG_KEY, JSON.stringify(logs.slice(0, 50)));
+      } catch (e) {}
+    }
+
+    function loadLogs() {
+      try { return JSON.parse(localStorage.getItem(LOG_KEY) || "[]"); }
+      catch (e) { return []; }
+    }
+
+    function timeNow() {
+      return new Date().toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
+    }
+
+    // ============================================================
+    // TOAST NOTIFICATION
+    // ============================================================
+    function Toast({ message, onDone }) {
+      const [exiting, setExiting] = useState(false);
+      useEffect(() => {
+        const t1 = setTimeout(() => setExiting(true), 2200);
+        const t2 = setTimeout(onDone, 2600);
+        return () => { clearTimeout(t1); clearTimeout(t2); };
+      }, []);
+      return (
+        <div style={{
+          position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)",
+          background: "linear-gradient(135deg, #2E2E3E, #3E3E50)", color: "#fff",
+          padding: "14px 28px", borderRadius: "16px", fontSize: "15px", fontWeight: 600,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.25)", zIndex: 9999,
+          animation: exiting ? "toastOut 0.4s ease forwards" : "toastIn 0.4s ease",
+          display: "flex", alignItems: "center", gap: "10px", maxWidth: "90vw",
+        }}>
+          {message}
+        </div>
+      );
+    }
+
+    // ============================================================
+    // ACCESSORY SVG
+    // ============================================================
+    function AccessoryIcon({ type, x, y, size, color = "#F0D060" }) {
+      const s = size;
+      if (type === "star") {
+        const pts = [];
+        for (let i = 0; i < 5; i++) {
+          const a1 = (Math.PI / 2) * -1 + (i * 2 * Math.PI) / 5;
+          const a2 = a1 + Math.PI / 5;
+          pts.push(x + Math.cos(a1) * s + "," + (y + Math.sin(a1) * s));
+          pts.push(x + Math.cos(a2) * s * 0.4 + "," + (y + Math.sin(a2) * s * 0.4));
+        }
+        return <polygon points={pts.join(" ")} fill={color} stroke="#E8C040" strokeWidth={s * 0.1} />;
+      }
+      if (type === "heart") {
+        return <path d={`M${x},${y + s * 0.3} C${x - s * 0.6},${y - s * 0.5} ${x - s * 1.2},${y + s * 0.2} ${x},${y + s} C${x + s * 1.2},${y + s * 0.2} ${x + s * 0.6},${y - s * 0.5} ${x},${y + s * 0.3}Z`} fill="#F08080" stroke="#D06060" strokeWidth={s * 0.08} />;
+      }
+      if (type === "moon") {
+        return <g><circle cx={x} cy={y} r={s} fill="#F0D860" /><circle cx={x + s * 0.35} cy={y - s * 0.2} r={s * 0.75} fill="#FDE8D0" opacity={0.95} /></g>;
+      }
+      if (type === "flower") {
+        return <g>{[0, 60, 120, 180, 240, 300].map(a => <circle key={a} cx={x + Math.cos(a * Math.PI / 180) * s * 0.55} cy={y + Math.sin(a * Math.PI / 180) * s * 0.55} r={s * 0.45} fill="#F0A0C0" opacity={0.85} />)}<circle cx={x} cy={y} r={s * 0.4} fill="#F0D060" /></g>;
+      }
+      if (type === "lightning") {
+        return <polygon points={`${x - s * 0.3},${y - s} ${x + s * 0.15},${y - s * 0.1} ${x - s * 0.05},${y - s * 0.1} ${x + s * 0.3},${y + s} ${x - s * 0.15},${y + s * 0.1} ${x + s * 0.05},${y + s * 0.1}`} fill="#F0D060" stroke="#E0C040" strokeWidth={s * 0.08} strokeLinejoin="round" />;
+      }
+      return null;
+    }
+
+    // ============================================================
+    // AVATAR SVG – Pixar/chibi-stil
+    // ============================================================
+    function AvatarSVG({ hair, skinTone, hairColor, shirtColor, eyeColor = "#3B3128", accessory = "star", mood = "glad", size = 80, animate = true, animDelay = 0 }) {
+      const s = size;
+      const uid = useMemo(() => "a" + Math.random().toString(36).slice(2, 7), []);
+      const cx = s / 2, headR = s * 0.33, headY = s * 0.36;
+      const bodyY = headY + headR * 0.75, bodyW = s * 0.52, bodyH = s * 0.30;
+      const armLen = s * 0.18, armW = s * 0.09, handR = s * 0.045;
+      const eyeSpacing = headR * 0.32, eyeY = headY + headR * 0.02;
+      const eyeRx = headR * 0.19, eyeRy = headR * 0.22;
+      const pupilR = headR * 0.12, irisR = headR * 0.16;
+
+      const mouthProps = {
+        glad: { d: `M${cx - headR * 0.22},${headY + headR * 0.38} Q${cx},${headY + headR * 0.62} ${cx + headR * 0.22},${headY + headR * 0.38}`, fill: "none", stroke: "#5A4030", sw: headR * 0.06 },
+        koncentrerad: { d: `M${cx - headR * 0.12},${headY + headR * 0.44} L${cx + headR * 0.12},${headY + headR * 0.44}`, fill: "none", stroke: "#5A4030", sw: headR * 0.06 },
+        uppmuntrande: { d: `M${cx - headR * 0.26},${headY + headR * 0.34} Q${cx},${headY + headR * 0.68} ${cx + headR * 0.26},${headY + headR * 0.34}`, fill: "#fff", stroke: "#5A4030", sw: headR * 0.05 },
+      };
+
+      const eyebrowProps = {
+        glad: { ly: -0.08, ry: -0.08, curve: 0 },
+        koncentrerad: { ly: -0.12, ry: -0.12, curve: 0.03 },
+        uppmuntrande: { ly: -0.14, ry: -0.10, curve: -0.02 },
+      };
+
+      const eb = eyebrowProps[mood] || eyebrowProps.glad;
+      const mo = mouthProps[mood] || mouthProps.glad;
+
+      const hairPaths = {
+        kort: `M${cx - headR * 0.88},${headY - headR * 0.12} Q${cx - headR * 0.5},${headY - headR * 1.25} ${cx},${headY - headR * 1.25} Q${cx + headR * 0.5},${headY - headR * 1.25} ${cx + headR * 0.88},${headY - headR * 0.12} Q${cx + headR * 0.6},${headY - headR * 0.6} ${cx},${headY - headR * 0.7} Q${cx - headR * 0.6},${headY - headR * 0.6} ${cx - headR * 0.88},${headY - headR * 0.12}Z`,
+        "l\u00E5ng": `M${cx - headR * 1.08},${headY + headR * 0.55} Q${cx - headR * 1.15},${headY - headR * 0.5} ${cx},${headY - headR * 1.28} Q${cx + headR * 1.15},${headY - headR * 0.5} ${cx + headR * 1.08},${headY + headR * 0.55} Q${cx + headR * 0.85},${headY + headR * 0.15} ${cx + headR * 0.75},${headY - headR * 0.3} Q${cx},${headY - headR * 0.9} ${cx - headR * 0.75},${headY - headR * 0.3} Q${cx - headR * 0.85},${headY + headR * 0.15} ${cx - headR * 1.08},${headY + headR * 0.55}Z`,
+        lockar: (() => {
+          const bumps = 8;
+          let p = `M${cx - headR * 1.05},${headY + headR * 0.35}`;
+          for (let i = 0; i <= bumps; i++) {
+            const angle = Math.PI + (Math.PI * i) / bumps;
+            const r = headR * 1.15 + Math.sin(i * 2.3) * headR * 0.12;
+            const px = cx + Math.cos(angle) * r;
+            const py = headY + Math.sin(angle) * r;
+            const cpx = cx + Math.cos(angle + 0.2) * (r + headR * 0.15);
+            const cpy = headY + Math.sin(angle + 0.2) * (r + headR * 0.15);
+            p += ` Q${cpx},${cpy} ${px},${py}`;
+          }
+          return p + "Z";
+        })(),
+        keps: `M${cx - headR * 1.35},${headY - headR * 0.16} L${cx + headR * 1.55},${headY - headR * 0.16} Q${cx + headR * 1.35},${headY - headR * 0.22} ${cx + headR * 0.95},${headY - headR * 0.38} Q${cx},${headY - headR * 1.3} ${cx - headR * 0.95},${headY - headR * 0.38} Q${cx - headR * 1.35},${headY - headR * 0.22} ${cx - headR * 1.35},${headY - headR * 0.16}Z`,
+        tofs: `M${cx - headR * 0.88},${headY - headR * 0.12} Q${cx},${headY - headR * 1.28} ${cx + headR * 0.88},${headY - headR * 0.12} Q${cx + headR * 0.5},${headY - headR * 0.6} ${cx},${headY - headR * 0.7} Q${cx - headR * 0.5},${headY - headR * 0.6} ${cx - headR * 0.88},${headY - headR * 0.12}Z M${cx + headR * 0.15},${headY - headR * 1.15} Q${cx + headR * 0.7},${headY - headR * 1.7} ${cx + headR * 0.55},${headY - headR * 1.5} Q${cx + headR * 0.9},${headY - headR * 1.4} ${cx + headR * 0.3},${headY - headR * 1.2}`,
+        mohawk: `M${cx - headR * 0.18},${headY - headR * 1.55} Q${cx},${headY - headR * 1.75} ${cx + headR * 0.18},${headY - headR * 1.55} L${cx + headR * 0.22},${headY - headR * 0.2} Q${cx},${headY - headR * 0.55} ${cx - headR * 0.22},${headY - headR * 0.2}Z`,
+      };
+
+      const accX = cx + bodyW * 0.15, accY = bodyY + bodyH * 0.3, accSize = s * 0.04;
+
+      return (
+        <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`} style={{ overflow: "visible" }}>
+          {animate && (
+            <defs>
+              <style>{`
+                @keyframes blink-${uid} { 0%, 92%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.08); } }
+                @keyframes breathe-${uid} { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(${-s * 0.01}px); } }
+                @keyframes sway-${uid} { 0%, 100% { transform: rotate(0deg); } 30% { transform: rotate(1.5deg); } 70% { transform: rotate(-1.5deg); } }
+                @keyframes wave-${uid} { 0%, 30%, 100% { transform: rotate(0deg); } 10% { transform: rotate(-20deg); } 20% { transform: rotate(12deg); } }
+                @keyframes float-${uid} { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(${-s * 0.015}px); } }
+              `}</style>
+              <filter id={`shadow-${uid}`}><feDropShadow dx="0" dy={s * 0.01} stdDeviation={s * 0.015} floodColor="#00000015" /></filter>
+              <radialGradient id={`headGrad-${uid}`} cx="40%" cy="35%"><stop offset="0%" stopColor="#ffffff" stopOpacity="0.15" /><stop offset="100%" stopColor="#000000" stopOpacity="0.03" /></radialGradient>
+              <linearGradient id={`bodyGrad-${uid}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ffffff" stopOpacity="0.15" /><stop offset="100%" stopColor="#000000" stopOpacity="0.08" /></linearGradient>
+            </defs>
+          )}
+          <g style={animate ? { animation: `breathe-${uid} 3.5s ease-in-out ${animDelay}s infinite`, transformOrigin: `${cx}px ${s * 0.85}px` } : {}} filter={animate ? `url(#shadow-${uid})` : undefined}>
+            {/* Body */}
+            <ellipse cx={cx} cy={bodyY + bodyH * 0.4} rx={bodyW / 2} ry={bodyH * 0.55} fill={shirtColor} />
+            <ellipse cx={cx} cy={bodyY + bodyH * 0.4} rx={bodyW / 2} ry={bodyH * 0.55} fill={`url(#bodyGrad-${uid})`} />
+            <path d={`M${cx - bodyW * 0.14},${bodyY + bodyH * 0.02} Q${cx},${bodyY + bodyH * 0.22} ${cx + bodyW * 0.14},${bodyY + bodyH * 0.02}`} fill="none" stroke={skinTone} strokeWidth={s * 0.025} strokeLinecap="round" />
+            <g style={animate ? { animation: `float-${uid} 4s ease-in-out ${animDelay + 1}s infinite`, transformOrigin: `${accX}px ${accY}px` } : {}}>
+              <AccessoryIcon type={accessory} x={accX} y={accY} size={accSize} />
+            </g>
+            {/* Left arm (waving) */}
+            <g style={animate ? { animation: `wave-${uid} 5s ease-in-out ${animDelay + 0.5}s infinite`, transformOrigin: `${cx - bodyW / 2 + armW}px ${bodyY + bodyH * 0.15}px` } : {}}>
+              <rect x={cx - bodyW / 2 - armW * 0.3} y={bodyY + bodyH * 0.08} width={armW} height={armLen} rx={armW / 2} fill={shirtColor} />
+              <circle cx={cx - bodyW / 2 - armW * 0.3 + armW / 2} cy={bodyY + bodyH * 0.08 + armLen + handR * 0.5} r={handR} fill={skinTone} />
+            </g>
+            {/* Right arm */}
+            <g>
+              <rect x={cx + bodyW / 2 - armW * 0.7} y={bodyY + bodyH * 0.08} width={armW} height={armLen} rx={armW / 2} fill={shirtColor} />
+              <circle cx={cx + bodyW / 2 - armW * 0.7 + armW / 2} cy={bodyY + bodyH * 0.08 + armLen + handR * 0.5} r={handR} fill={skinTone} />
+            </g>
+            {/* Neck */}
+            <rect x={cx - s * 0.055} y={bodyY - s * 0.01} width={s * 0.11} height={s * 0.04} rx={s * 0.02} fill={skinTone} />
+            {/* Head group with sway */}
+            <g style={animate ? { animation: `sway-${uid} 5s ease-in-out ${animDelay + 0.3}s infinite`, transformOrigin: `${cx}px ${headY + headR * 0.8}px` } : {}}>
+              <circle cx={cx} cy={headY} r={headR} fill={skinTone} />
+              <circle cx={cx} cy={headY} r={headR} fill={`url(#headGrad-${uid})`} />
+              {/* Ears */}
+              <ellipse cx={cx - headR * 0.92} cy={headY + headR * 0.08} rx={headR * 0.16} ry={headR * 0.2} fill={skinTone} />
+              <ellipse cx={cx + headR * 0.92} cy={headY + headR * 0.08} rx={headR * 0.16} ry={headR * 0.2} fill={skinTone} />
+              <ellipse cx={cx - headR * 0.92} cy={headY + headR * 0.08} rx={headR * 0.09} ry={headR * 0.12} fill={skinTone + "88"} />
+              <ellipse cx={cx + headR * 0.92} cy={headY + headR * 0.08} rx={headR * 0.09} ry={headR * 0.12} fill={skinTone + "88"} />
+              {/* Eyes */}
+              <g style={animate ? { animation: `blink-${uid} ${3.5 + animDelay * 0.3}s ease-in-out ${animDelay * 0.7}s infinite`, transformOrigin: `${cx - eyeSpacing}px ${eyeY}px` } : {}}>
+                <ellipse cx={cx - eyeSpacing} cy={eyeY} rx={eyeRx} ry={eyeRy} fill="#fff" />
+                <circle cx={cx - eyeSpacing} cy={eyeY + eyeRy * 0.08} r={irisR} fill={eyeColor} />
+                <circle cx={cx - eyeSpacing} cy={eyeY + eyeRy * 0.08} r={pupilR} fill="#1A1A1A" />
+                <circle cx={cx - eyeSpacing + eyeRx * 0.3} cy={eyeY - eyeRy * 0.2} r={eyeRx * 0.32} fill="#fff" opacity={0.9} />
+                <circle cx={cx - eyeSpacing - eyeRx * 0.15} cy={eyeY + eyeRy * 0.25} r={eyeRx * 0.14} fill="#fff" opacity={0.6} />
+              </g>
+              <g style={animate ? { animation: `blink-${uid} ${3.5 + animDelay * 0.3}s ease-in-out ${animDelay * 0.7}s infinite`, transformOrigin: `${cx + eyeSpacing}px ${eyeY}px` } : {}}>
+                <ellipse cx={cx + eyeSpacing} cy={eyeY} rx={eyeRx} ry={eyeRy} fill="#fff" />
+                <circle cx={cx + eyeSpacing} cy={eyeY + eyeRy * 0.08} r={irisR} fill={eyeColor} />
+                <circle cx={cx + eyeSpacing} cy={eyeY + eyeRy * 0.08} r={pupilR} fill="#1A1A1A" />
+                <circle cx={cx + eyeSpacing + eyeRx * 0.3} cy={eyeY - eyeRy * 0.2} r={eyeRx * 0.32} fill="#fff" opacity={0.9} />
+                <circle cx={cx + eyeSpacing - eyeRx * 0.15} cy={eyeY + eyeRy * 0.25} r={eyeRx * 0.14} fill="#fff" opacity={0.6} />
+              </g>
+              {/* Eyebrows */}
+              <path d={`M${cx - eyeSpacing - eyeRx * 0.9},${eyeY - eyeRy * 1.3 + headR * eb.ly} Q${cx - eyeSpacing},${eyeY - eyeRy * 1.6 + headR * eb.ly + headR * eb.curve} ${cx - eyeSpacing + eyeRx * 0.9},${eyeY - eyeRy * 1.3 + headR * eb.ly}`} fill="none" stroke={hairColor} strokeWidth={headR * 0.06} strokeLinecap="round" opacity={0.65} />
+              <path d={`M${cx + eyeSpacing - eyeRx * 0.9},${eyeY - eyeRy * 1.3 + headR * eb.ry} Q${cx + eyeSpacing},${eyeY - eyeRy * 1.6 + headR * eb.ry - headR * eb.curve} ${cx + eyeSpacing + eyeRx * 0.9},${eyeY - eyeRy * 1.3 + headR * eb.ry}`} fill="none" stroke={hairColor} strokeWidth={headR * 0.06} strokeLinecap="round" opacity={0.65} />
+              {/* Nose */}
+              <ellipse cx={cx} cy={headY + headR * 0.22} rx={headR * 0.06} ry={headR * 0.04} fill="#00000010" />
+              {/* Mouth */}
+              <path d={mo.d} fill={mo.fill || "none"} stroke={mo.stroke} strokeWidth={mo.sw} strokeLinecap="round" />
+              {/* Cheeks */}
+              <circle cx={cx - headR * 0.48} cy={headY + headR * 0.3} r={headR * 0.13} fill="#FFB0A0" opacity={0.2} />
+              <circle cx={cx + headR * 0.48} cy={headY + headR * 0.3} r={headR * 0.13} fill="#FFB0A0" opacity={0.2} />
+              {/* Hair */}
+              <path d={hairPaths[hair] || hairPaths.kort} fill={hairColor} />
+            </g>
+          </g>
+        </svg>
+      );
+    }
+
+    // ============================================================
+    // AVATAR BADGE
+    // ============================================================
+    function AvatarBadge({ child, size = 64, selected, onClick, showName = true, animDelay = 0, mood = "glad" }) {
+      const [pressed, setPressed] = useState(false);
+      const handleClick = () => {
+        setPressed(true);
+        setTimeout(() => setPressed(false), 400);
+        if (onClick) onClick();
+      };
+      return (
+        <div onClick={handleClick} style={{
+          display: "flex", flexDirection: "column", alignItems: "center",
+          cursor: onClick ? "pointer" : "default", padding: "6px", borderRadius: "18px",
+          background: selected ? "rgba(124,110,230,0.12)" : "transparent",
+          border: selected ? "3px solid #7C6EE6" : "3px solid transparent",
+          transition: "all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)",
+          minWidth: size + 16, transform: pressed ? "scale(0.88)" : "scale(1)",
+          WebkitUserSelect: "none", userSelect: "none",
+        }}>
+          <div style={{
+            width: size, height: size, borderRadius: "50%",
+            background: "linear-gradient(145deg, #f8f6ff, #edeaff)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            overflow: "hidden",
+            boxShadow: selected ? "0 6px 22px rgba(124,110,230,0.30)" : "0 3px 10px rgba(0,0,0,0.06)",
+            transition: "all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)",
+          }}>
+            <AvatarSVG hair={child.hair} skinTone={child.skinTone} hairColor={child.hairColor}
+              shirtColor={child.shirtColor} eyeColor={child.eyeColor || "#3B3128"}
+              accessory={child.accessory || "star"} mood={mood} size={size - 4}
+              animate={true} animDelay={animDelay} />
+          </div>
+          {showName && (
+            <span style={{
+              marginTop: "5px", fontSize: size < 50 ? "10px" : "13px",
+              fontWeight: 600, color: selected ? "#5B4FC7" : "#3E3E50",
+              textAlign: "center", maxWidth: size + 24,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>{child.name}</span>
+          )}
+        </div>
+      );
+    }
+
+    // ============================================================
+    // AVATAR SKAPARE (modal)
+    // ============================================================
+    function AvatarCreator({ onSave, onCancel, editChild }) {
+      const [name, setName] = useState(editChild?.name || "");
+      const [hair, setHair] = useState(editChild?.hair || "kort");
+      const [skinTone, setSkinTone] = useState(editChild?.skinTone || SKIN_TONES[0]);
+      const [hairColor, setHairColor] = useState(editChild?.hairColor || HAIR_COLORS[0]);
+      const [shirtColor, setShirtColor] = useState(editChild?.shirtColor || SHIRT_COLORS[4]);
+      const [eyeColor, setEyeColor] = useState(editChild?.eyeColor || EYE_COLORS[0]);
+      const [accessory, setAccessory] = useState(editChild?.accessory || "star");
+      const [previewMood, setPreviewMood] = useState("glad");
+
+      const preview = { name: name || "?", hair, skinTone, hairColor, shirtColor, eyeColor, accessory };
+
+      const Section = ({ label, children: ch }) => (
+        <div style={{ marginBottom: "14px" }}>
+          <span style={{ fontSize: "13px", fontWeight: 700, color: "#5A5A6E", letterSpacing: "0.3px" }}>{label}</span>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "7px" }}>{ch}</div>
+        </div>
+      );
+
+      const ColorBtn = ({ color, isSelected, onClick: oc }) => (
+        <button onClick={oc} style={{
+          width: 42, height: 42, borderRadius: "50%", border: "3px solid",
+          borderColor: isSelected ? "#7C6EE6" : "#E8E6F0", background: color,
+          cursor: "pointer", transition: "all 0.2s ease",
+          transform: isSelected ? "scale(1.18)" : "scale(1)",
+          boxShadow: isSelected ? "0 3px 12px rgba(124,110,230,0.3)" : "none",
+        }} />
+      );
+
+      const PillBtn = ({ label, isSelected, onClick: oc }) => (
+        <button onClick={oc} style={{
+          padding: "10px 16px", borderRadius: "12px", border: "2px solid",
+          borderColor: isSelected ? "#7C6EE6" : "#E8E6F0",
+          background: isSelected ? "#F0EDFF" : "#fff",
+          fontSize: "14px", fontWeight: 600, cursor: "pointer",
+          color: isSelected ? "#5B4FC7" : "#6E6E80", transition: "all 0.15s ease",
+        }}>{label}</button>
+      );
+
+      return (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(30,30,50,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "16px", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}>
+          <div style={{ background: "#fff", borderRadius: "28px", padding: "28px", maxWidth: "480px", width: "100%", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 70px rgba(0,0,0,0.25)", animation: "modalIn 0.35s ease" }}>
+            <h2 style={{ margin: "0 0 20px", textAlign: "center", fontSize: "21px", color: "#2E2E3E", fontWeight: 800 }}>
+              {editChild ? "Redigera avatar" : "Skapa din avatar"}
+            </h2>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: "8px" }}>
+              <div style={{ background: "linear-gradient(145deg, #F5F3FF, #EDE9FF)", borderRadius: "24px", padding: "20px 36px" }}>
+                <AvatarBadge child={preview} size={110} showName={!!name} mood={previewMood} />
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "center", gap: "6px", marginBottom: "18px" }}>
+              {MOODS.map(m => (
+                <button key={m} onClick={() => setPreviewMood(m)} style={{
+                  padding: "6px 14px", borderRadius: "10px", border: "2px solid",
+                  borderColor: previewMood === m ? "#7C6EE6" : "#E8E6F0",
+                  background: previewMood === m ? "#F0EDFF" : "#fff",
+                  fontSize: "12px", fontWeight: 600, cursor: "pointer",
+                  color: previewMood === m ? "#5B4FC7" : "#8E8EA0",
+                }}>{m === "glad" ? "\u{1F60A}" : m === "koncentrerad" ? "\u{1F914}" : "\u{1F604}"} {m.charAt(0).toUpperCase() + m.slice(1)}</button>
+              ))}
+            </div>
+
+            <label style={{ display: "block", marginBottom: "14px" }}>
+              <span style={{ fontSize: "13px", fontWeight: 700, color: "#5A5A6E" }}>Namn</span>
+              <input type="text" value={name} onChange={e => setName(e.target.value)}
+                placeholder="Skriv barnets namn..."
+                style={{ display: "block", width: "100%", padding: "14px 16px", borderRadius: "14px", border: "2px solid #E8E6F0", fontSize: "16px", marginTop: "6px", outline: "none", boxSizing: "border-box" }} />
+            </label>
+
+            <Section label="Frisyr">
+              {HAIR_STYLES.map(h => <PillBtn key={h} label={HAIR_LABELS[h] || h} isSelected={hair === h} onClick={() => setHair(h)} />)}
+            </Section>
+            <Section label="Hudf\u00E4rg">
+              {SKIN_TONES.map(c => <ColorBtn key={c} color={c} isSelected={skinTone === c} onClick={() => setSkinTone(c)} />)}
+            </Section>
+            <Section label="H\u00E5rf\u00E4rg">
+              {HAIR_COLORS.map(c => <ColorBtn key={c} color={c} isSelected={hairColor === c} onClick={() => setHairColor(c)} />)}
+            </Section>
+            <Section label="\u00D6gonf\u00E4rg">
+              {EYE_COLORS.map(c => <ColorBtn key={c} color={c} isSelected={eyeColor === c} onClick={() => setEyeColor(c)} />)}
+            </Section>
+            <Section label="Tr\u00F6jf\u00E4rg">
+              {SHIRT_COLORS.map(c => <ColorBtn key={c} color={c} isSelected={shirtColor === c} onClick={() => setShirtColor(c)} />)}
+            </Section>
+            <Section label="K\u00E4nnetecken">
+              {ACCESSORIES.map(a => <PillBtn key={a} label={`${ACCESSORY_EMOJI[a]} ${ACCESSORY_LABELS[a]}`} isSelected={accessory === a} onClick={() => setAccessory(a)} />)}
+            </Section>
+
+            <div style={{ display: "flex", gap: "12px", marginTop: "6px" }}>
+              <button onClick={onCancel} style={{ flex: 1, padding: "16px", borderRadius: "14px", border: "2px solid #E8E6F0", background: "#fff", fontSize: "16px", fontWeight: 600, cursor: "pointer", color: "#8E8EA0" }}>Avbryt</button>
+              <button onClick={() => name.trim() && onSave({ name: name.trim(), hair, skinTone, hairColor, shirtColor, eyeColor, accessory })}
+                disabled={!name.trim()} style={{
+                  flex: 1, padding: "16px", borderRadius: "14px", border: "none",
+                  background: name.trim() ? "linear-gradient(135deg, #7C6EE6, #9B7FD4)" : "#D0D0D8",
+                  color: "#fff", fontSize: "16px", fontWeight: 700,
+                  cursor: name.trim() ? "pointer" : "default",
+                  boxShadow: name.trim() ? "0 4px 16px rgba(124,110,230,0.3)" : "none",
+                }}>{editChild ? "Spara" : "L\u00E4gg till"}</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================================
+    // ROOM CARD
+    // ============================================================
+    function RoomCard({ room, children, selectedChild, onRoomClick, childCount }) {
+      const isTarget = selectedChild !== null;
+      const [hover, setHover] = useState(false);
+      return (
+        <div onClick={() => onRoomClick(room.id)}
+          onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+          style={{
+            background: "#fff", borderRadius: "22px", padding: "16px",
+            border: isTarget ? `3px dashed ${room.color}` : "2px solid #F0EEF5",
+            cursor: isTarget ? "pointer" : "default",
+            transition: "all 0.25s ease",
+            boxShadow: hover || isTarget ? `0 6px 24px ${room.color}20` : "0 2px 8px rgba(0,0,0,0.03)",
+            transform: hover && isTarget ? "scale(1.02)" : "scale(1)",
+            minHeight: "120px",
+          }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+            <div style={{ width: 48, height: 48, borderRadius: "14px", background: room.color + "14", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "24px" }}>
+              {room.icon}
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: "16px", color: "#2E2E3E" }}>{room.name}</div>
+              <div style={{ fontSize: "13px", color: "#A0A0B0" }}>{childCount} barn</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+            {children.map((child, i) => (
+              <AvatarBadge key={child.id} child={child} size={52} animDelay={i * 0.5} mood="glad" />
+            ))}
+          </div>
+          {isTarget && childCount === 0 && (
+            <div style={{ textAlign: "center", padding: "8px", color: "#C0C0CA", fontSize: "14px" }}>Tomt rum</div>
+          )}
+          {isTarget && (
+            <div style={{ textAlign: "center", padding: "10px 0 4px", color: room.color, fontSize: "14px", fontWeight: 600, animation: "pulse 1.5s ease-in-out infinite" }}>
+              Tryck f\u00F6r att flytta hit
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ============================================================
+    // BEKRÄFTA-DIALOG
+    // ============================================================
+    function ConfirmDialog({ message, onConfirm, onCancel }) {
+      return (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(30,30,50,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "16px", backdropFilter: "blur(6px)" }}>
+          <div style={{ background: "#fff", borderRadius: "24px", padding: "28px", maxWidth: "380px", width: "100%", textAlign: "center", boxShadow: "0 24px 70px rgba(0,0,0,0.25)", animation: "modalIn 0.3s ease" }}>
+            <div style={{ fontSize: "40px", marginBottom: "12px" }}>\u26A0\uFE0F</div>
+            <p style={{ fontSize: "17px", color: "#2E2E3E", fontWeight: 600, marginBottom: "24px", lineHeight: 1.5 }}>{message}</p>
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button onClick={onCancel} style={{ flex: 1, padding: "14px", borderRadius: "14px", border: "2px solid #E8E6F0", background: "#fff", fontSize: "16px", fontWeight: 600, cursor: "pointer", color: "#8E8EA0" }}>Avbryt</button>
+              <button onClick={onConfirm} style={{ flex: 1, padding: "14px", borderRadius: "14px", border: "none", background: "linear-gradient(135deg, #E87070, #D06060)", color: "#fff", fontSize: "16px", fontWeight: 700, cursor: "pointer" }}>Ja, g\u00F6r det</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================================
+    // AKTIVITETSLOGG
+    // ============================================================
+    function ActivityLog() {
+      const logs = loadLogs();
+      if (logs.length === 0) return <div style={{ textAlign: "center", color: "#A0A0B0", padding: "20px" }}>Ingen aktivitet \u00E4nnu idag</div>;
+      return (
+        <div style={{ maxHeight: "300px", overflowY: "auto" }}>
+          {logs.map((log, i) => (
+            <div key={i} style={{ display: "flex", gap: "12px", padding: "10px 0", borderBottom: i < logs.length - 1 ? "1px solid #F0EEF5" : "none", animation: `slideIn 0.2s ease ${i * 0.03}s both` }}>
+              <span style={{ fontSize: "13px", fontWeight: 600, color: "#A0A0B0", minWidth: "50px" }}>{log.time}</span>
+              <span style={{ fontSize: "14px", color: "#3E3E50" }}>{log.msg}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // ============================================================
+    // HUVUDAPP
+    // ============================================================
+    function App() {
+      const [kids, setKids] = useState(() => {
+        const saved = loadData();
+        if (saved && saved.length > 0) return saved;
+        return DEFAULT_KIDS.map(k => ({ ...k, room: null, checkedIn: false, checkInTime: null }));
+      });
+      const [selectedKid, setSelectedKid] = useState(null);
+      const [view, setView] = useState("board");
+      const [showCreator, setShowCreator] = useState(false);
+      const [editingKid, setEditingKid] = useState(null);
+      const [searchTerm, setSearchTerm] = useState("");
+      const [parentSearch, setParentSearch] = useState("");
+      const [toast, setToast] = useState(null);
+      const [confirmAction, setConfirmAction] = useState(null);
+      const [showLog, setShowLog] = useState(false);
+      const [clock, setClock] = useState(timeNow());
+      const nextId = useRef(Math.max(...kids.map(k => k.id), 0) + 1);
+
+      // Klocka
+      useEffect(() => {
+        const t = setInterval(() => setClock(timeNow()), 30000);
+        return () => clearInterval(t);
+      }, []);
+
+      // Spara till localStorage vid varje förändring
+      useEffect(() => { saveData(kids); }, [kids]);
+
+      const checkedInKids = kids.filter(k => k.checkedIn && k.room);
+      const notCheckedIn = kids.filter(k => !k.checkedIn);
+      const filteredNotCheckedIn = notCheckedIn.filter(k => k.name.toLowerCase().includes(searchTerm.toLowerCase()));
+
+      const showToast = useCallback((msg) => { setToast(msg); }, []);
+
+      const handleCheckIn = (kidId) => {
+        const kid = kids.find(k => k.id === kidId);
+        setKids(p => p.map(k => k.id === kidId ? { ...k, checkedIn: true, checkInTime: timeNow() } : k));
+        setSelectedKid(kidId);
+        if (kid) addLog(`${kid.name} checkade in`);
+      };
+
+      const handleMoveToRoom = (roomId) => {
+        if (selectedKid === null) return;
+        const kid = kids.find(k => k.id === selectedKid);
+        const room = ROOMS.find(r => r.id === roomId);
+        setKids(p => p.map(k => k.id === selectedKid ? { ...k, room: roomId } : k));
+        setSelectedKid(null);
+        if (kid && room) {
+          showToast(`${room.icon} ${kid.name} \u2192 ${room.name}`);
+          addLog(`${kid.name} gick till ${room.name}`);
+        }
+      };
+
+      const handleGoHome = () => {
+        if (selectedKid === null) return;
+        const kid = kids.find(k => k.id === selectedKid);
+        setKids(p => p.map(k => k.id === selectedKid ? { ...k, room: null, checkedIn: false, checkInTime: null } : k));
+        setSelectedKid(null);
+        if (kid) {
+          showToast(`\u{1F3E1} ${kid.name} gick hem`);
+          addLog(`${kid.name} gick hem`);
+        }
+      };
+
+      const handleSelectKid = (kidId) => setSelectedKid(selectedKid === kidId ? null : kidId);
+
+      const handleAddKid = (data) => {
+        if (editingKid) {
+          setKids(p => p.map(k => k.id === editingKid.id ? { ...k, ...data } : k));
+          showToast(`\u2705 ${data.name} uppdaterad`);
+          setEditingKid(null);
+        } else {
+          setKids(p => [...p, { ...data, id: nextId.current++, room: null, checkedIn: false, checkInTime: null }]);
+          showToast(`\u2705 ${data.name} tillagd!`);
+          addLog(`${data.name} lades till`);
+        }
+        setShowCreator(false);
+      };
+
+      const handleRemoveKid = (kid) => {
+        setConfirmAction({
+          message: `Vill du ta bort ${kid.name}?`,
+          action: () => {
+            setKids(p => p.filter(k => k.id !== kid.id));
+            showToast(`${kid.name} borttagen`);
+            addLog(`${kid.name} togs bort`);
+          }
+        });
+      };
+
+      const handleResetDay = () => {
+        setConfirmAction({
+          message: "\u00C4r du s\u00E4ker p\u00E5 att du vill \u00E5terst\u00E4lla alla incheckningar?",
+          action: () => {
+            setKids(p => p.map(k => ({ ...k, room: null, checkedIn: false, checkInTime: null })));
+            setSelectedKid(null);
+            showToast("\u{1F504} Ny dag \u2013 alla utcheckade");
+            addLog("Ny dag \u2013 alla utcheckade");
+            try { localStorage.removeItem(LOG_KEY); } catch(e) {}
+          }
+        });
+      };
+
+      const toggleFullscreen = () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen?.();
+        } else {
+          document.exitFullscreen?.();
+        }
+      };
+
+      return (
+        <div style={{ minHeight: "100vh", minHeight: "100dvh", background: "#F8F7FC" }}>
+          {/* HEADER */}
+          <div style={{
+            background: "linear-gradient(135deg, #7C6EE6, #9B7FD4, #B08BD6)",
+            padding: "14px 20px", color: "#fff",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            flexWrap: "wrap", gap: "10px",
+            boxShadow: "0 4px 20px rgba(124,110,230,0.25)",
+            position: "sticky", top: 0, zIndex: 100,
+          }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <h1 style={{ margin: 0, fontSize: "20px", fontWeight: 800, letterSpacing: "-0.3px" }}>
+                  \u{1F3E0} Fritids Incheckning
+                </h1>
+                <span style={{ fontSize: "14px", opacity: 0.7, fontWeight: 500 }}>{clock}</span>
+              </div>
+              <div style={{ fontSize: "13px", opacity: 0.85, marginTop: "2px" }}>
+                {checkedInKids.length} incheckade &middot; {notCheckedIn.length} ej incheckade
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+              {[
+                { id: "board", label: "Tavla", icon: "\u{1F3E0}" },
+                { id: "parent", label: "F\u00F6r\u00E4lder", icon: "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}" },
+                { id: "admin", label: "Admin", icon: "\u2699\uFE0F" },
+              ].map(v => (
+                <button key={v.id} onClick={() => { setView(v.id); setSelectedKid(null); }} style={{
+                  padding: "10px 16px", borderRadius: "12px",
+                  border: "2px solid rgba(255,255,255,0.25)",
+                  background: view === v.id ? "rgba(255,255,255,0.22)" : "transparent",
+                  color: "#fff", fontSize: "13px", fontWeight: 600, cursor: "pointer",
+                  transition: "all 0.2s ease",
+                }}>{v.icon} {v.label}</button>
+              ))}
+              <button onClick={toggleFullscreen} title="Fullsk\u00E4rm" style={{
+                padding: "10px 12px", borderRadius: "12px",
+                border: "2px solid rgba(255,255,255,0.25)",
+                background: "transparent", color: "#fff", fontSize: "15px",
+                cursor: "pointer",
+              }}>\u26F6</button>
+            </div>
+          </div>
+
+          {/* === BOARD VIEW === */}
+          {view === "board" && (
+            <div style={{ padding: "16px", maxWidth: "1200px", margin: "0 auto" }}>
+              {/* Selection bar */}
+              {selectedKid !== null && (() => {
+                const kid = kids.find(k => k.id === selectedKid);
+                if (!kid) return null;
+                return (
+                  <div style={{
+                    background: "linear-gradient(135deg, #7C6EE6, #9B7FD4)",
+                    borderRadius: "18px", padding: "14px 20px", marginBottom: "16px",
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    color: "#fff", flexWrap: "wrap", gap: "10px",
+                    animation: "fadeInUp 0.3s ease",
+                    boxShadow: "0 6px 24px rgba(124,110,230,0.25)",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                      <AvatarBadge child={kid} size={52} showName={false} />
+                      <div>
+                        <span style={{ fontWeight: 700, fontSize: "17px" }}>{kid.name}</span>
+                        <div style={{ fontSize: "13px", opacity: 0.85 }}>V\u00E4lj ett rum nedan!</div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button onClick={handleGoHome} style={{
+                        padding: "12px 20px", borderRadius: "12px",
+                        border: "2px solid rgba(255,255,255,0.35)",
+                        background: "rgba(255,255,255,0.12)",
+                        color: "#fff", fontSize: "14px", fontWeight: 700, cursor: "pointer",
+                      }}>\u{1F3E1} Hemg\u00E5ng</button>
+                      <button onClick={() => setSelectedKid(null)} style={{
+                        padding: "12px 20px", borderRadius: "12px",
+                        border: "2px solid rgba(255,255,255,0.35)",
+                        background: "rgba(255,255,255,0.12)",
+                        color: "#fff", fontSize: "14px", fontWeight: 700, cursor: "pointer",
+                      }}>\u2715 Avbryt</button>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Not checked in */}
+              {notCheckedIn.length > 0 && (
+                <div style={{
+                  background: "#fff", borderRadius: "22px", padding: "16px",
+                  marginBottom: "16px", border: "2px solid #F0EEF5",
+                  animation: "fadeInUp 0.4s ease",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+                    <h2 style={{ margin: 0, fontSize: "16px", color: "#2E2E3E", fontWeight: 700 }}>
+                      \u{1F4CB} Ej incheckade ({notCheckedIn.length})
+                    </h2>
+                    <input type="text" placeholder="S\u00F6k barn..." value={searchTerm}
+                      onChange={e => setSearchTerm(e.target.value)}
+                      style={{ padding: "10px 14px", borderRadius: "12px", border: "2px solid #E8E6F0", fontSize: "14px", outline: "none", width: "180px" }} />
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                    {filteredNotCheckedIn.map((kid, i) => (
+                      <AvatarBadge key={kid.id} child={kid} size={62} onClick={() => handleCheckIn(kid.id)} animDelay={i * 0.2} />
+                    ))}
+                    {filteredNotCheckedIn.length === 0 && searchTerm && (
+                      <div style={{ color: "#A0A0B0", padding: "10px", fontSize: "14px" }}>Inga tr\u00E4ffar</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Room grid */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "14px" }}>
+                {ROOMS.map(room => {
+                  const roomKids = kids.filter(k => k.room === room.id && k.checkedIn);
+                  return <RoomCard key={room.id} room={room} children={roomKids} childCount={roomKids.length} selectedChild={selectedKid} onRoomClick={handleMoveToRoom} />;
+                })}
+              </div>
+
+              {/* Checked in kids */}
+              {checkedInKids.length > 0 && (
+                <div style={{
+                  background: "#fff", borderRadius: "22px", padding: "16px",
+                  marginTop: "16px", border: "2px solid #F0EEF5",
+                }}>
+                  <h2 style={{ margin: "0 0 12px", fontSize: "16px", color: "#2E2E3E", fontWeight: 700 }}>
+                    \u{1F446} Tryck p\u00E5 ett barn f\u00F6r att flytta eller skicka hem
+                  </h2>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                    {checkedInKids.map((kid, i) => (
+                      <AvatarBadge key={kid.id} child={kid} size={62}
+                        selected={selectedKid === kid.id}
+                        onClick={() => handleSelectKid(kid.id)}
+                        animDelay={i * 0.25} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* === PARENT VIEW === */}
+          {view === "parent" && (
+            <div style={{ padding: "16px", maxWidth: "600px", margin: "0 auto" }}>
+              <div style={{
+                background: "#fff", borderRadius: "22px", padding: "24px",
+                border: "2px solid #F0EEF5", animation: "fadeInUp 0.4s ease",
+              }}>
+                <h2 style={{ margin: "0 0 16px", fontSize: "22px", color: "#2E2E3E", textAlign: "center", fontWeight: 800 }}>
+                  \u{1F468}\u200D\u{1F469}\u200D\u{1F467} Var \u00E4r mitt barn?
+                </h2>
+                <input type="text" placeholder="S\u00F6k p\u00E5 barnets namn..." value={parentSearch}
+                  onChange={e => setParentSearch(e.target.value)}
+                  style={{
+                    display: "block", width: "100%", padding: "16px 20px",
+                    borderRadius: "16px", border: "2px solid #E8E6F0",
+                    fontSize: "18px", outline: "none", textAlign: "center",
+                    marginBottom: "20px", boxSizing: "border-box",
+                  }} />
+                {parentSearch.trim() ? (
+                  <div>
+                    {kids.filter(k => k.name.toLowerCase().includes(parentSearch.toLowerCase())).map((kid, i) => {
+                      const room = ROOMS.find(r => r.id === kid.room);
+                      return (
+                        <div key={kid.id} style={{
+                          display: "flex", alignItems: "center", gap: "16px",
+                          padding: "16px", borderRadius: "18px", marginBottom: "12px",
+                          background: kid.checkedIn && room ? room.color + "0C" : "#FEF5F5",
+                          border: `2px solid ${kid.checkedIn && room ? room.color + "25" : "#F5D0D0"}`,
+                          animation: `slideIn 0.3s ease ${i * 0.1}s both`,
+                        }}>
+                          <AvatarBadge child={kid} size={70} showName={false} animDelay={i * 0.4} mood={kid.checkedIn && room ? "glad" : "koncentrerad"} />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 700, fontSize: "19px", color: "#2E2E3E" }}>{kid.name}</div>
+                            {kid.checkedIn && room ? (
+                              <div>
+                                <div style={{ fontSize: "17px", color: room.color, fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+                                  <span style={{ fontSize: "22px" }}>{room.icon}</span> {room.name}
+                                </div>
+                                {kid.checkInTime && <div style={{ fontSize: "13px", color: "#A0A0B0", marginTop: "2px" }}>Incheckad {kid.checkInTime}</div>}
+                              </div>
+                            ) : kid.checkedIn ? (
+                              <div style={{ fontSize: "16px", color: "#E8A840", fontWeight: 600 }}>Incheckad \u2013 v\u00E4ljer rum</div>
+                            ) : (
+                              <div style={{ fontSize: "16px", color: "#A0A0B0", fontWeight: 600 }}>Ej incheckad</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {kids.filter(k => k.name.toLowerCase().includes(parentSearch.toLowerCase())).length === 0 && (
+                      <div style={{ textAlign: "center", color: "#A0A0B0", padding: "20px", fontSize: "15px" }}>Inget barn hittades</div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ textAlign: "center", color: "#A0A0B0", padding: "30px 20px", fontSize: "16px", lineHeight: 1.6 }}>
+                    Skriv ditt barns namn f\u00F6r att se var hen befinner sig
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* === ADMIN VIEW === */}
+          {view === "admin" && (
+            <div style={{ padding: "16px", maxWidth: "900px", margin: "0 auto" }}>
+              <div style={{
+                background: "#fff", borderRadius: "22px", padding: "24px",
+                border: "2px solid #F0EEF5", animation: "fadeInUp 0.4s ease",
+                marginBottom: "16px",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px", flexWrap: "wrap", gap: "10px" }}>
+                  <h2 style={{ margin: 0, fontSize: "19px", color: "#2E2E3E", fontWeight: 800 }}>
+                    \u2699\uFE0F Hantera barn ({kids.length})
+                  </h2>
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    <button onClick={() => setShowLog(!showLog)} style={{
+                      padding: "10px 16px", borderRadius: "12px",
+                      border: "2px solid #E8E6F0", background: showLog ? "#F0EDFF" : "#fff",
+                      color: showLog ? "#5B4FC7" : "#6E6E80",
+                      fontSize: "13px", fontWeight: 700, cursor: "pointer",
+                    }}>\u{1F4CB} Logg</button>
+                    <button onClick={handleResetDay} style={{
+                      padding: "10px 16px", borderRadius: "12px",
+                      border: "2px solid #F5D0D0", background: "#FEF5F5",
+                      color: "#D06060", fontSize: "13px", fontWeight: 700, cursor: "pointer",
+                    }}>\u{1F504} Ny dag</button>
+                    <button onClick={() => { setEditingKid(null); setShowCreator(true); }} style={{
+                      padding: "10px 16px", borderRadius: "12px", border: "none",
+                      background: "linear-gradient(135deg, #7C6EE6, #9B7FD4)",
+                      color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer",
+                      boxShadow: "0 3px 12px rgba(124,110,230,0.25)",
+                    }}>+ L\u00E4gg till barn</button>
+                  </div>
+                </div>
+
+                {/* Activity log */}
+                {showLog && (
+                  <div style={{ background: "#FAFAFE", borderRadius: "16px", padding: "16px", marginBottom: "16px", border: "1px solid #F0EEF5" }}>
+                    <h3 style={{ margin: "0 0 10px", fontSize: "15px", color: "#5A5A6E", fontWeight: 700 }}>\u{1F4CB} Aktivitetslogg</h3>
+                    <ActivityLog />
+                  </div>
+                )}
+
+                {/* Kids grid */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: "10px" }}>
+                  {kids.map((kid, i) => (
+                    <div key={kid.id} style={{
+                      display: "flex", alignItems: "center", gap: "12px",
+                      padding: "12px", borderRadius: "16px", background: "#FAFAFE",
+                      border: "2px solid #F0EEF5",
+                      animation: `slideIn 0.3s ease ${i * 0.03}s both`,
+                    }}>
+                      <AvatarBadge child={kid} size={50} showName={false} animDelay={i * 0.1} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: "15px", color: "#2E2E3E" }}>{kid.name}</div>
+                        <div style={{ fontSize: "12px", color: kid.checkedIn ? "#5CC7A0" : "#A0A0B0" }}>
+                          {kid.checkedIn ? `Incheckad ${kid.checkInTime || ""}` : "Ej incheckad"}
+                        </div>
+                      </div>
+                      <button onClick={() => { setEditingKid(kid); setShowCreator(true); }} style={{
+                        width: 38, height: 38, borderRadius: "10px", border: "none",
+                        background: "#E8E6F0", cursor: "pointer", fontSize: "16px",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>\u270F\uFE0F</button>
+                      <button onClick={() => handleRemoveKid(kid)} style={{
+                        width: 38, height: 38, borderRadius: "10px", border: "none",
+                        background: "#FDE8E8", cursor: "pointer", fontSize: "16px",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>\u{1F5D1}\uFE0F</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Statistics */}
+              <div style={{
+                background: "#fff", borderRadius: "22px", padding: "24px",
+                border: "2px solid #F0EEF5",
+              }}>
+                <h2 style={{ margin: "0 0 16px", fontSize: "17px", color: "#2E2E3E", fontWeight: 800 }}>\u{1F4CA} Rumsf\u00F6rdelning</h2>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "10px" }}>
+                  {ROOMS.map(room => {
+                    const count = kids.filter(k => k.room === room.id && k.checkedIn).length;
+                    const pct = checkedInKids.length > 0 ? Math.round((count / checkedInKids.length) * 100) : 0;
+                    return (
+                      <div key={room.id} style={{ padding: "14px", borderRadius: "14px", background: room.color + "08", border: `1px solid ${room.color}20` }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                          <span style={{ fontSize: "20px" }}>{room.icon}</span>
+                          <span style={{ fontWeight: 700, fontSize: "14px", color: "#2E2E3E" }}>{room.name}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          <div style={{ flex: 1, height: "8px", background: "#F0EEF5", borderRadius: "4px", overflow: "hidden" }}>
+                            <div style={{ width: `${pct}%`, height: "100%", background: room.color, borderRadius: "4px", transition: "width 0.5s ease" }} />
+                          </div>
+                          <span style={{ fontSize: "14px", fontWeight: 700, color: room.color, minWidth: "36px" }}>{count} st</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modals */}
+          {showCreator && <AvatarCreator editChild={editingKid} onSave={handleAddKid} onCancel={() => { setShowCreator(false); setEditingKid(null); }} />}
+          {confirmAction && <ConfirmDialog message={confirmAction.message} onConfirm={() => { confirmAction.action(); setConfirmAction(null); }} onCancel={() => setConfirmAction(null)} />}
+          {toast && <Toast message={toast} onDone={() => setToast(null)} />}
+        </div>
+      );
+    }
+
+    // ============================================================
+    // RENDER
+    // ============================================================
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

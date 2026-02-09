@@ -1560,11 +1560,57 @@ function PermissionsInfo({ onClose }) {
 
 export default function FritidsApp() {
   const [session, setSession] = useState(null); // { role, user }
-  const [allChildren, setAllChildren] = useState(INITIAL_CHILDREN);
+  const [allChildrenLocal, setAllChildrenLocal] = useState(INITIAL_CHILDREN);
   const [showPermissions, setShowPermissions] = useState(false);
+  const [dbReady, setDbReady] = useState(false);
+  const dbRef = useRef(db.ref('children'));
+  const isFirstLoad = useRef(true);
+
+  // ── Firebase realtidssynk ──
+  useEffect(() => {
+    const ref = dbRef.current;
+    const listener = ref.on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const arr = Object.values(data);
+        setAllChildrenLocal(arr);
+      } else if (isFirstLoad.current) {
+        const obj = {};
+        INITIAL_CHILDREN.forEach(c => { obj[c.id] = c; });
+        ref.set(obj);
+      }
+      isFirstLoad.current = false;
+      setDbReady(true);
+    });
+    return () => ref.off('value', listener);
+  }, []);
+
+  const allChildren = allChildrenLocal;
+  const setAllChildren = useCallback((updater) => {
+    setAllChildrenLocal((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      const obj = {};
+      next.forEach(c => { obj[c.id] = c; });
+      dbRef.current.set(obj);
+      return next;
+    });
+  }, []);
 
   const handleLogin = ({ role, user }) => setSession({ role, user });
   const handleLogout = () => setSession(null);
+
+  if (!dbReady) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #f0f4ff 0%, #fdf2f8 50%, #fef9c3 100%)", fontFamily: font }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 56, marginBottom: 12, animation: "pulse 1.5s ease-in-out infinite" }}>🏠</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "#667eea" }}>Ansluter...</div>
+          <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 4 }}>Synkar med databasen</div>
+        </div>
+        <style>{"@keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }"}</style>
+      </div>
+    );
+  }
 
   if (!session) {
     return <LoginScreen onLogin={handleLogin} children={allChildren} />;
