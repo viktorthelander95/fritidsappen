@@ -182,9 +182,19 @@ const makeCode = (fullName, birthYear) => {
 };
 
 const PEDAGOGUES = [
-  { id: "ped1", name: "Viktor Thelander", code: "VT95", birthYear: "95" },
-  { id: "ped2", name: "Lisa Andersson", code: "LA88", birthYear: "88" },
-  { id: "ped3", name: "Marcus Eriksson", code: "ME90", birthYear: "90" },
+  { id: "ped1", name: "Viktor Thelander", code: "VT95", birthYear: "95", siteId: "fridaskolan-kalleback" },
+  { id: "ped2", name: "Lisa Andersson", code: "LA88", birthYear: "88", siteId: "fridaskolan-kalleback" },
+  { id: "ped3", name: "Marcus Eriksson", code: "ME90", birthYear: "90", siteId: "fridaskolan-kalleback" },
+];
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SITES – Varje fritidshem är en egen enhet
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const SITES = [
+  { id: "fridaskolan-kalleback", name: "Fridaskolan Kallebäck", subtitle: "Maxi fritids", icon: "🏫", color: "#00B398" },
+  // Nya fritidshem läggs till här:
+  // { id: "fridaskolan-bagaregarden", name: "Fridaskolan Bagaregården", subtitle: "Fritids", icon: "🏫", color: "#E4003B" },
 ];
 
 // Vårdnadshavare – kopplas till elever via childrenIds (byggs ut vid behov)
@@ -257,8 +267,11 @@ const formatDateShort = (dateStr) => {
 };
 const DAYNAMES = ["Sön", "Mån", "Tis", "Ons", "Tor", "Fre", "Lör"];
 const getDayName = (dateStr) => DAYNAMES[new Date(dateStr + "T12:00:00").getDay()];
+// Aktiv site – sätts av FritidsApp vid val av fritidshem
+let activeSiteId = null;
 const recordHistory = (childId, childName, childGroup, updates) => {
-  db.ref("history/" + todayStr() + "/" + childId).update({ name: childName, group: childGroup, ...updates });
+  if (!activeSiteId) return;
+  db.ref("sites/" + activeSiteId + "/history/" + todayStr() + "/" + childId).update({ name: childName, group: childGroup, ...updates });
 };
 
 // ── Avatar Builder ──
@@ -362,10 +375,43 @@ const pillBtn = (active, color = "#00B398") => ({
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SITE SELECTOR – Välj fritidshem
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function SiteSelector({ onSelect }) {
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: `linear-gradient(135deg, ${BRAND.navy} 0%, ${BRAND.navyLight} 100%)`, fontFamily: font, padding: 20 }}>
+      <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
+        <div style={{ fontSize: 56, marginBottom: 8 }}>🏠</div>
+        <h1 style={{ fontSize: 32, fontWeight: 800, color: "white", margin: "0 0 4px" }}>Fritidsappen</h1>
+        <div style={{ fontSize: 12, color: BRAND.red, fontWeight: 700, letterSpacing: 1, marginBottom: 6, background: "rgba(255,255,255,0.1)", display: "inline-block", padding: "3px 12px", borderRadius: 8 }}>FRIDA UTBILDNING</div>
+        <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 16, margin: "16px 0 32px" }}>Välj ditt fritidshem</p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {SITES.map((site) => (
+            <button key={site.id} onClick={() => onSelect(site)}
+              style={{ display: "flex", alignItems: "center", gap: 16, padding: "22px 24px", borderRadius: 20, border: "none", background: "white", cursor: "pointer", fontFamily: font, boxShadow: "0 8px 30px rgba(0,0,0,0.15)", transition: "all 0.2s", textAlign: "left" }}>
+              <div style={{ width: 56, height: 56, borderRadius: 16, background: `${site.color}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, flexShrink: 0 }}>{site.icon}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 800, fontSize: 17, color: BRAND.navy }}>{site.name}</div>
+                <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 2, fontWeight: 600 }}>{site.subtitle}</div>
+              </div>
+              <div style={{ fontSize: 22, color: site.color }}>→</div>
+            </button>
+          ))}
+        </div>
+
+        <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, marginTop: 32 }}>Kontakta admin för att lägga till nytt fritidshem</p>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // LOGIN SCREEN
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function LoginScreen({ onLogin, children: allChildren }) {
+function LoginScreen({ onLogin, children: allChildren, site, onBack }) {
   const [role, setRole] = useState(null);
   const [childCode, setChildCode] = useState("");
   const [code, setCode] = useState("");
@@ -401,9 +447,9 @@ function LoginScreen({ onLogin, children: allChildren }) {
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #E8F8F5 0%, #E8F8F5 50%, #FFF5F7 100%)", fontFamily: font, padding: 20 }}>
         <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
           <div style={{ fontSize: 56, marginBottom: 8 }}>🏠</div>
-          <h1 style={{ fontSize: 32, fontWeight: 800, color: BRAND.navy, margin: "0 0 4px" }}>Fritidsappen</h1>
-          <div style={{ fontSize: 12, color: BRAND.red, fontWeight: 700, letterSpacing: 1, marginBottom: 2 }}>FRIDA UTBILDNING</div>
-          <p style={{ color: "#64748b", fontSize: 16, margin: "0 0 36px" }}>Välj hur du vill logga in</p>
+          <h1 style={{ fontSize: 26, fontWeight: 800, color: BRAND.navy, margin: "0 0 4px" }}>{site?.name || "Fritidsappen"}</h1>
+          {site?.subtitle && <div style={{ fontSize: 13, color: BRAND.teal, fontWeight: 700, marginBottom: 2 }}>{site.subtitle}</div>}
+          <p style={{ color: "#64748b", fontSize: 16, margin: "8px 0 32px" }}>Välj hur du vill logga in</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {roles.map((r) => (
               <button key={r.id} onClick={() => { setRole(r.id); setError(""); }}
@@ -417,6 +463,11 @@ function LoginScreen({ onLogin, children: allChildren }) {
               </button>
             ))}
           </div>
+          {onBack && (
+            <button onClick={onBack} style={{ marginTop: 24, background: "none", border: "none", cursor: "pointer", fontFamily: font, fontSize: 14, color: "#94a3b8", fontWeight: 600 }}>
+              ← Byt fritidshem
+            </button>
+          )}
         </div>
       </div>
     );
@@ -1047,7 +1098,7 @@ function ChildView({ user, allChildren, setAllChildren }) {
 // PEDAGOGUE VIEW – Dashboard + Student Management
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function PedagogueView({ allChildren, setAllChildren, onLogout }) {
+function PedagogueView({ allChildren, setAllChildren, onLogout, siteId }) {
   const [tab, setTab] = useState("overview");
   const [filterGroup, setFilterGroup] = useState("all");
   const [showAddModal, setShowAddModal] = useState(false);
@@ -1075,7 +1126,7 @@ function PedagogueView({ allChildren, setAllChildren, onLogout }) {
     const dates = getWeekDates(refDate);
     const listeners = [];
     dates.forEach(dateStr => {
-      const ref = db.ref("history/" + dateStr);
+      const ref = db.ref("sites/" + (siteId || activeSiteId) + "/history/" + dateStr);
       const listener = ref.on("value", (snap) => {
         const data = snap.val();
         setHistoryData(prev => ({ ...prev, [dateStr]: data || {} }));
@@ -2340,43 +2391,66 @@ function PermissionsInfo({ onClose }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function FritidsApp() {
+  const [site, setSite] = useState(null); // Valt fritidshem
   const [session, setSession] = useState(null); // { role, user }
-  const [allChildrenLocal, setAllChildrenLocal] = useState(INITIAL_CHILDREN);
+  const [allChildrenLocal, setAllChildrenLocal] = useState([]);
   const [showPermissions, setShowPermissions] = useState(false);
   const [dbReady, setDbReady] = useState(false);
-  const dbRef = useRef(db.ref('children'));
+  const dbRef = useRef(null);
   const isFirstLoad = useRef(true);
 
-  // ── Firebase realtidssynk ──
+  // ── Välja fritidshem ──
+  const handleSelectSite = (selectedSite) => {
+    setSite(selectedSite);
+    activeSiteId = selectedSite.id;
+    setDbReady(false);
+    isFirstLoad.current = true;
+  };
+
+  const handleBackToSites = () => {
+    // Stäng av lyssnare
+    if (dbRef.current) dbRef.current.off();
+    setSite(null);
+    setSession(null);
+    setAllChildrenLocal([]);
+    setDbReady(false);
+    activeSiteId = null;
+    isFirstLoad.current = true;
+  };
+
+  // ── Firebase realtidssynk (scoped till valt fritidshem) ──
   useEffect(() => {
-    const ref = dbRef.current;
+    if (!site) return;
+    const ref = db.ref("sites/" + site.id + "/children");
+    dbRef.current = ref;
     const listener = ref.on('value', (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        // Konvertera Firebase-objekt till array
         const arr = Object.values(data);
         setAllChildrenLocal(arr);
       } else if (isFirstLoad.current) {
-        // Första gången: skicka startdata till Firebase
+        // Första gången för detta fritidshem: skicka startdata
+        const defaults = INITIAL_CHILDREN; // TODO: olika data per site
         const obj = {};
-        INITIAL_CHILDREN.forEach(c => { obj[c.id] = c; });
+        defaults.forEach(c => { obj[c.id] = c; });
         ref.set(obj);
       }
       isFirstLoad.current = false;
       setDbReady(true);
     });
     return () => ref.off('value', listener);
-  }, []);
+  }, [site]);
 
   // Wrapper: uppdatera lokalt + skriva till Firebase
   const allChildren = allChildrenLocal;
   const setAllChildren = useCallback((updater) => {
     setAllChildrenLocal((prev) => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
-      // Skriv till Firebase
-      const obj = {};
-      next.forEach(c => { obj[c.id] = c; });
-      dbRef.current.set(obj);
+      if (dbRef.current) {
+        const obj = {};
+        next.forEach(c => { obj[c.id] = c; });
+        dbRef.current.set(obj);
+      }
       return next;
     });
   }, []);
@@ -2384,11 +2458,11 @@ function FritidsApp() {
   // ── Auto-utcheckning kl 19:00 ──
   const autoCheckoutDone = useRef(new Set());
   useEffect(() => {
+    if (!site || !dbReady) return;
     const checkAuto = () => {
       const now = new Date();
       const hh = now.getHours();
       const dateKey = todayStr();
-      // Kl 19:00 eller senare → checka ut alla som fortfarande är incheckade
       if (hh >= 19 && !autoCheckoutDone.current.has(dateKey)) {
         autoCheckoutDone.current.add(dateKey);
         const ts = Date.now();
@@ -2397,51 +2471,61 @@ function FritidsApp() {
           if (stillIn.length === 0) return prev;
           const next = prev.map(c => {
             if (c.status !== "incheckad") return c;
-            // Spara historik: auto-utcheckad
             recordHistory(c.id, c.name, c.group, { checkedOut: true, checkedOutAt: ts, checkoutMethod: "auto", autoCheckout: true });
             return { ...c, status: "gått_hem", checkedOutAt: ts, room: null, updatedAt: ts };
           });
-          // Skriv till Firebase
-          const obj = {};
-          next.forEach(c => { obj[c.id] = c; });
-          dbRef.current.set(obj);
+          if (dbRef.current) {
+            const obj = {};
+            next.forEach(c => { obj[c.id] = c; });
+            dbRef.current.set(obj);
+          }
           return next;
         });
       }
     };
-    checkAuto(); // Kör direkt
-    const timer = setInterval(checkAuto, 60000); // Kolla varje minut
+    checkAuto();
+    const timer = setInterval(checkAuto, 60000);
     return () => clearInterval(timer);
-  }, []);
+  }, [site, dbReady]);
 
   const handleLogin = ({ role, user }) => setSession({ role, user });
   const handleLogout = () => setSession(null);
 
-  // Visa laddningsskärm medan Firebase ansluter
+  // ── 1. Inget fritidshem valt → Visa SiteSelector ──
+  if (!site) {
+    return <SiteSelector onSelect={handleSelectSite} />;
+  }
+
+  // ── 2. Väntar på Firebase ──
   if (!dbReady) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #E8F8F5 0%, #E8F8F5 50%, #FFF5F7 100%)", fontFamily: font }}>
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 56, marginBottom: 12, animation: "pulse 1.5s ease-in-out infinite" }}>🏠</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#00B398" }}>Ansluter...</div>
-          <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 4 }}>Synkar med databasen</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: BRAND.teal }}>{site.name}</div>
+          <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 4 }}>Ansluter till databasen...</div>
         </div>
         <style>{"@keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }"}</style>
       </div>
     );
   }
 
+  // ── 3. Inte inloggad → LoginScreen ──
   if (!session) {
-    return <LoginScreen onLogin={handleLogin} children={allChildren} />;
+    return <LoginScreen onLogin={handleLogin} children={allChildren} site={site} onBack={handleBackToSites} />;
   }
 
+  // ── 4. Inloggad → App ──
   return (
     <div style={{ fontFamily: font }}>
       {/* Top nav */}
       <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 20px", background: grad, color: "white", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 2px 12px rgba(0,0,0,0.15)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 24 }}>🏠</span>
-          <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.5px" }}>Fritidsappen</span>
+          <span style={{ fontSize: 20, cursor: "pointer" }} title="Byt fritidshem" onClick={handleBackToSites}>🏠</span>
+          <div style={{ lineHeight: 1.1 }}>
+            <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-0.5px", display: "block" }}>{site.name}</span>
+            <span style={{ fontSize: 10, opacity: 0.7, fontWeight: 600 }}>{site.subtitle}</span>
+          </div>
           <span style={{ fontSize: 11, background: "rgba(255,255,255,0.2)", padding: "3px 10px", borderRadius: 10, fontWeight: 600 }}>
             {session.role === "child" ? "😊 " + session.user.name : session.role === "pedagogue" ? "👩‍🏫 " + session.user.name : "👨‍👩‍👧 " + session.user.name}
           </span>
@@ -2454,7 +2538,7 @@ function FritidsApp() {
 
       {/* Content */}
       {session.role === "child" && <ChildView user={session.user} allChildren={allChildren} setAllChildren={setAllChildren} />}
-      {session.role === "pedagogue" && <PedagogueView allChildren={allChildren} setAllChildren={setAllChildren} onLogout={handleLogout} />}
+      {session.role === "pedagogue" && <PedagogueView allChildren={allChildren} setAllChildren={setAllChildren} onLogout={handleLogout} siteId={site.id} />}
       {session.role === "parent" && <ParentView parent={session.user} allChildren={allChildren} setAllChildren={setAllChildren} />}
 
       {/* Permissions modal */}
