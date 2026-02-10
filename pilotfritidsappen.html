@@ -235,6 +235,32 @@ const calcStreak = (child) => {
 };
 const streakEmoji = (n) => n >= 7 ? "💎" : n >= 5 ? "🔥" : n >= 3 ? "⭐" : "✨";
 
+// ── Kalender & Historik helpers ──
+const getWeekNumber = (d) => {
+  const date = new Date(d); date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+  const week1 = new Date(date.getFullYear(), 0, 4);
+  return 1 + Math.round(((date - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+};
+const getWeekDates = (refDate) => {
+  const d = new Date(refDate); const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  const mon = new Date(d); mon.setDate(diff);
+  return Array.from({ length: 5 }, (_, i) => {
+    const dd = new Date(mon); dd.setDate(mon.getDate() + i);
+    return dd.toISOString().slice(0, 10);
+  });
+};
+const formatDateShort = (dateStr) => {
+  const d = new Date(dateStr + "T12:00:00");
+  return d.toLocaleDateString("sv-SE", { day: "numeric", month: "short" });
+};
+const DAYNAMES = ["Sön", "Mån", "Tis", "Ons", "Tor", "Fre", "Lör"];
+const getDayName = (dateStr) => DAYNAMES[new Date(dateStr + "T12:00:00").getDay()];
+const recordHistory = (childId, childName, childGroup, updates) => {
+  db.ref("history/" + todayStr() + "/" + childId).update({ name: childName, group: childGroup, ...updates });
+};
+
 // ── Avatar Builder ──
 const SKIN_TONES = [
   { id: "f2d3b1", color: "#f2d3b1" }, { id: "e0ac69", color: "#e0ac69" },
@@ -721,13 +747,17 @@ function ChildView({ user, allChildren, setAllChildren }) {
 
   const handleCheckIn = () => {
     setCheckInAnim(true);
-    setAllChildren((prev) => prev.map((c) => c.id === user.id ? { ...c, status: "incheckad", checkedInAt: Date.now(), checkedOutAt: null, room: null, updatedAt: null, maxiKronor: (c.maxiKronor || 0) + 1 } : c));
+    const now = Date.now();
+    setAllChildren((prev) => prev.map((c) => c.id === user.id ? { ...c, status: "incheckad", checkedInAt: now, checkedOutAt: null, room: null, updatedAt: null, maxiKronor: (c.maxiKronor || 0) + 1 } : c));
+    recordHistory(user.id, user.name, user.group, { checkedIn: true, checkedInAt: now, checkedOut: false, placedInRoom: false });
     triggerCoinAnim("maxi");
     setTimeout(() => setCheckInAnim(false), 2000);
   };
 
   const handleGoHome = () => {
-    setAllChildren((prev) => prev.map((c) => c.id === user.id ? { ...c, status: "gått_hem", checkedOutAt: Date.now(), room: null, updatedAt: Date.now(), maxiKronor: (c.maxiKronor || 0) + 1 } : c));
+    const now = Date.now();
+    setAllChildren((prev) => prev.map((c) => c.id === user.id ? { ...c, status: "gått_hem", checkedOutAt: now, room: null, updatedAt: now, maxiKronor: (c.maxiKronor || 0) + 1 } : c));
+    recordHistory(user.id, user.name, user.group, { checkedOut: true, checkedOutAt: now, checkoutMethod: "self" });
     triggerCoinAnim("maxi");
     setCurrentRoom(null);
     setShowGoHome(false);
@@ -741,6 +771,7 @@ function ChildView({ user, allChildren, setAllChildren }) {
       const s = calcStreak(c);
       return { ...c, room: roomId, updatedAt: Date.now(), streak: s.streak, lastStreakDate: s.lastStreakDate };
     }));
+    recordHistory(user.id, user.name, user.group, { placedInRoom: true, lastRoom: roomId });
     triggerCoinAnim("streak");
     setTimeout(() => setConfirmAnim(null), 1800);
   };
@@ -1014,12 +1045,33 @@ function PedagogueView({ allChildren, setAllChildren, onLogout }) {
   const [roomPickChild, setRoomPickChild] = useState(null);
   const [dismissedPickups, setDismissedPickups] = useState(new Set());
   const [now, setNow] = useState(new Date());
+  const [calendarWeekOffset, setCalendarWeekOffset] = useState(0);
+  const [historyData, setHistoryData] = useState({});
+  const [selectedDay, setSelectedDay] = useState(null);
 
   // Update clock every 30 seconds for pickup notifications
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(timer);
   }, []);
+
+  // Hämta historik för vald vecka
+  useEffect(() => {
+    if (tab !== "calendar") return;
+    const refDate = new Date();
+    refDate.setDate(refDate.getDate() + calendarWeekOffset * 7);
+    const dates = getWeekDates(refDate);
+    const listeners = [];
+    dates.forEach(dateStr => {
+      const ref = db.ref("history/" + dateStr);
+      const listener = ref.on("value", (snap) => {
+        const data = snap.val();
+        setHistoryData(prev => ({ ...prev, [dateStr]: data || {} }));
+      });
+      listeners.push({ ref, listener });
+    });
+    return () => listeners.forEach(({ ref, listener }) => ref.off("value", listener));
+  }, [tab, calendarWeekOffset]);
 
   const groups = [...new Set(allChildren.map((c) => c.group))].sort();
   const filtered = filterGroup === "all" ? allChildren : allChildren.filter((c) => c.group === filterGroup);
@@ -1077,22 +1129,31 @@ function PedagogueView({ allChildren, setAllChildren, onLogout }) {
   };
 
   const handleCheckOut = (id) => {
-    setAllChildren((prev) => prev.map((c) => c.id === id ? { ...c, status: "gått_hem", checkedOutAt: Date.now(), room: null, updatedAt: Date.now() } : c));
+    const now = Date.now();
+    const child = allChildren.find(c => c.id === id);
+    setAllChildren((prev) => prev.map((c) => c.id === id ? { ...c, status: "gått_hem", checkedOutAt: now, room: null, updatedAt: now } : c));
+    if (child) recordHistory(id, child.name, child.group, { checkedOut: true, checkedOutAt: now, checkoutMethod: "pedagogue" });
   };
 
   const handlePlaceInRoom = (childId, roomId) => {
+    const child = allChildren.find(c => c.id === childId);
     setAllChildren((prev) => prev.map((c) => c.id === childId ? { ...c, room: roomId, updatedAt: Date.now() } : c));
+    if (child) recordHistory(childId, child.name, child.group, { placedInRoom: true, lastRoom: roomId });
     setRoomPickChild(null);
   };
 
   const handleCheckInAll = () => {
+    const now = Date.now();
     const ids = new Set(notCheckedIn.map((c) => c.id));
-    setAllChildren((prev) => prev.map((c) => ids.has(c.id) ? { ...c, status: "incheckad", checkedInAt: Date.now(), checkedOutAt: null, room: null, updatedAt: null } : c));
+    setAllChildren((prev) => prev.map((c) => ids.has(c.id) ? { ...c, status: "incheckad", checkedInAt: now, checkedOutAt: null, room: null, updatedAt: null } : c));
+    notCheckedIn.forEach(c => recordHistory(c.id, c.name, c.group, { checkedIn: true, checkedInAt: now, checkedOut: false, placedInRoom: false }));
   };
 
   const handleCheckOutAll = () => {
+    const now = Date.now();
     const ids = new Set(checkedIn.map((c) => c.id));
-    setAllChildren((prev) => prev.map((c) => ids.has(c.id) ? { ...c, status: "gått_hem", checkedOutAt: Date.now(), room: null, updatedAt: Date.now() } : c));
+    setAllChildren((prev) => prev.map((c) => ids.has(c.id) ? { ...c, status: "gått_hem", checkedOutAt: now, room: null, updatedAt: now } : c));
+    checkedIn.forEach(c => recordHistory(c.id, c.name, c.group, { checkedOut: true, checkedOutAt: now, checkoutMethod: "pedagogue" }));
   };
 
   // Add new child
@@ -1143,6 +1204,7 @@ function PedagogueView({ allChildren, setAllChildren, onLogout }) {
       <div style={{ display: "flex", gap: 0, background: "white", borderBottom: "2px solid #f1f5f9" }}>
         {[
           { id: "overview", label: "📋 Översikt" },
+          { id: "calendar", label: "📅 Kalender" },
           { id: "attendance", label: "✅ Närvaro" },
           { id: "toplist", label: "🏆 Topplistan" },
           { id: "students", label: "👥 Elever" },
@@ -1307,6 +1369,175 @@ function PedagogueView({ allChildren, setAllChildren, onLogout }) {
           )}
         </div>
       )}
+
+      {/* ── CALENDAR TAB ── */}
+      {tab === "calendar" && (() => {
+        const refDate = new Date();
+        refDate.setDate(refDate.getDate() + calendarWeekOffset * 7);
+        const weekDates = getWeekDates(refDate);
+        const weekNum = getWeekNumber(refDate);
+        const today = todayStr();
+
+        // Statistik per dag
+        const dayStats = weekDates.map(dateStr => {
+          const dayData = historyData[dateStr] || {};
+          const entries = Object.values(dayData);
+          const total = entries.filter(e => e.checkedIn).length;
+          const checkedOutSelf = entries.filter(e => e.checkoutMethod === "self").length;
+          const checkedOutPed = entries.filter(e => e.checkoutMethod === "pedagogue").length;
+          const checkedOutParent = entries.filter(e => e.checkoutMethod === "parent").length;
+          const checkedOutAuto = entries.filter(e => e.checkoutMethod === "auto").length;
+          const notCheckedOut = entries.filter(e => e.checkedIn && !e.checkedOut).length;
+          const notPlaced = entries.filter(e => e.checkedIn && !e.placedInRoom).length;
+          const placed = entries.filter(e => e.placedInRoom).length;
+          return { dateStr, total, checkedOutSelf, checkedOutPed, checkedOutParent, checkedOutAuto, notCheckedOut, notPlaced, placed, entries };
+        });
+
+        return (
+          <div style={{ padding: "20px 16px" }}>
+            {/* Veckonavigering */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <button onClick={() => setCalendarWeekOffset(p => p - 1)} style={{ background: "#f1f5f9", border: "none", borderRadius: 12, padding: "10px 16px", cursor: "pointer", fontSize: 16, fontWeight: 700, fontFamily: font, color: "#667eea" }}>◀</button>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#1e293b" }}>📅 Vecka {weekNum}</div>
+                <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>{formatDateShort(weekDates[0])} – {formatDateShort(weekDates[4])}</div>
+              </div>
+              <button onClick={() => setCalendarWeekOffset(p => p + 1)} style={{ background: "#f1f5f9", border: "none", borderRadius: 12, padding: "10px 16px", cursor: "pointer", fontSize: 16, fontWeight: 700, fontFamily: font, color: "#667eea" }} disabled={calendarWeekOffset >= 0}>▶</button>
+            </div>
+            {calendarWeekOffset !== 0 && (
+              <button onClick={() => setCalendarWeekOffset(0)} style={{ display: "block", margin: "0 auto 16px", background: "#667eea", color: "white", border: "none", borderRadius: 10, padding: "6px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: font }}>Idag</button>
+            )}
+
+            {/* Dagskort */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {dayStats.map(({ dateStr, total, checkedOutSelf, checkedOutPed, checkedOutParent, checkedOutAuto, notCheckedOut, notPlaced, placed }) => {
+                const isToday = dateStr === today;
+                const isFuture = dateStr > today;
+                const hasIssues = checkedOutAuto > 0 || notPlaced > 0;
+                return (
+                  <div key={dateStr} onClick={() => !isFuture && total > 0 && setSelectedDay(dateStr === selectedDay ? null : dateStr)}
+                    style={{
+                      background: isToday ? "linear-gradient(135deg, #eff6ff, #dbeafe)" : isFuture ? "#f9fafb" : "white",
+                      borderRadius: 18, padding: "16px 18px", cursor: isFuture || total === 0 ? "default" : "pointer",
+                      border: isToday ? "2px solid #3b82f6" : hasIssues && !isFuture ? "2px solid #f59e0b" : "2px solid #f1f5f9",
+                      boxShadow: isToday ? "0 4px 16px rgba(59,130,246,0.15)" : "0 2px 8px rgba(0,0,0,0.04)",
+                      opacity: isFuture ? 0.5 : 1, transition: "all 0.2s"
+                    }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: total > 0 ? 10 : 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ width: 44, height: 44, borderRadius: 14, background: isToday ? "#3b82f6" : "#f1f5f9", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: isToday ? "rgba(255,255,255,0.8)" : "#94a3b8", lineHeight: 1 }}>{getDayName(dateStr)}</div>
+                          <div style={{ fontSize: 16, fontWeight: 800, color: isToday ? "white" : "#1e293b", lineHeight: 1.2 }}>{dateStr.slice(8)}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 15, fontWeight: 700, color: "#1e293b" }}>{getDayName(dateStr)} {formatDateShort(dateStr)}</div>
+                          {isFuture ? (
+                            <div style={{ fontSize: 12, color: "#94a3b8" }}>Kommande</div>
+                          ) : total === 0 ? (
+                            <div style={{ fontSize: 12, color: "#94a3b8" }}>Ingen aktivitet</div>
+                          ) : (
+                            <div style={{ fontSize: 12, color: "#64748b" }}>{total} incheckade</div>
+                          )}
+                        </div>
+                      </div>
+                      {!isFuture && total > 0 && (
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          {checkedOutAuto > 0 && (
+                            <span style={{ background: "#fef2f2", color: "#dc2626", fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 8, border: "1px solid #fecaca" }}>⚠️ {checkedOutAuto} auto</span>
+                          )}
+                          {notPlaced > 0 && (
+                            <span style={{ background: "#fffbeb", color: "#d97706", fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 8, border: "1px solid #fde68a" }}>📍 {notPlaced} ej rum</span>
+                          )}
+                          {hasIssues ? null : <span style={{ fontSize: 16 }}>✅</span>}
+                          <span style={{ fontSize: 14, color: "#94a3b8" }}>{selectedDay === dateStr ? "▲" : "▼"}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Statistikrad */}
+                    {!isFuture && total > 0 && (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 11, background: "#f0fdf4", color: "#16a34a", padding: "3px 8px", borderRadius: 8, fontWeight: 600 }}>👤 Själv: {checkedOutSelf}</span>
+                        <span style={{ fontSize: 11, background: "#eff6ff", color: "#2563eb", padding: "3px 8px", borderRadius: 8, fontWeight: 600 }}>👩‍🏫 Ped: {checkedOutPed}</span>
+                        <span style={{ fontSize: 11, background: "#f5f3ff", color: "#7c3aed", padding: "3px 8px", borderRadius: 8, fontWeight: 600 }}>👨‍👩‍👧 Förä: {checkedOutParent}</span>
+                        {checkedOutAuto > 0 && <span style={{ fontSize: 11, background: "#fef2f2", color: "#dc2626", padding: "3px 8px", borderRadius: 8, fontWeight: 600 }}>🤖 Auto: {checkedOutAuto}</span>}
+                        <span style={{ fontSize: 11, background: "#f0fdf4", color: "#16a34a", padding: "3px 8px", borderRadius: 8, fontWeight: 600 }}>📍 Rum: {placed}</span>
+                      </div>
+                    )}
+
+                    {/* Detaljer vid klick */}
+                    {selectedDay === dateStr && !isFuture && total > 0 && (() => {
+                      const dayData = historyData[dateStr] || {};
+                      const entries = Object.entries(dayData).map(([id, e]) => ({ id, ...e }));
+                      const autoList = entries.filter(e => e.checkoutMethod === "auto");
+                      const noRoomList = entries.filter(e => e.checkedIn && !e.placedInRoom);
+                      const allEntries = entries.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+                      return (
+                        <div style={{ marginTop: 14, borderTop: "2px solid #f1f5f9", paddingTop: 14 }}>
+                          {/* Auto-utcheckade */}
+                          {autoList.length > 0 && (
+                            <div style={{ marginBottom: 14 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: "#dc2626", marginBottom: 6 }}>⚠️ Auto-utcheckade kl 19:00 ({autoList.length} st)</div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                {autoList.map(e => (
+                                  <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fef2f2", padding: "8px 12px", borderRadius: 10, border: "1px solid #fecaca" }}>
+                                    <span style={{ fontSize: 14 }}>🤖</span>
+                                    <span style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", flex: 1 }}>{e.name}</span>
+                                    <span style={{ fontSize: 11, color: "#94a3b8" }}>{e.group}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Ej placerade i rum */}
+                          {noRoomList.length > 0 && (
+                            <div style={{ marginBottom: 14 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: "#d97706", marginBottom: 6 }}>📍 Placerade sig inte i rum ({noRoomList.length} st)</div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                {noRoomList.map(e => (
+                                  <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fffbeb", padding: "8px 12px", borderRadius: 10, border: "1px solid #fde68a" }}>
+                                    <span style={{ fontSize: 14 }}>📍</span>
+                                    <span style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", flex: 1 }}>{e.name}</span>
+                                    <span style={{ fontSize: 11, color: "#94a3b8" }}>{e.group}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Alla elever denna dag */}
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 6 }}>📋 Alla ({allEntries.length} st)</div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                              {allEntries.map(e => {
+                                const method = e.checkoutMethod === "self" ? "👤 Själv" : e.checkoutMethod === "pedagogue" ? "👩‍🏫 Pedagog" : e.checkoutMethod === "parent" ? "👨‍👩‍👧 Förälder" : e.checkoutMethod === "auto" ? "🤖 Auto" : "–";
+                                const methodColor = e.checkoutMethod === "auto" ? "#dc2626" : e.checkoutMethod === "self" ? "#16a34a" : "#2563eb";
+                                return (
+                                  <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "#f8fafc", padding: "7px 12px", borderRadius: 8, border: "1px solid #f1f5f9" }}>
+                                    <span style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", flex: 1 }}>{e.name}</span>
+                                    <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>{e.group}</span>
+                                    {e.placedInRoom && <span style={{ fontSize: 10, background: "#f0fdf4", color: "#16a34a", padding: "2px 6px", borderRadius: 6, fontWeight: 600 }}>📍 {rm(e.lastRoom)?.name || "rum"}</span>}
+                                    {!e.placedInRoom && e.checkedIn && <span style={{ fontSize: 10, background: "#fffbeb", color: "#d97706", padding: "2px 6px", borderRadius: 6, fontWeight: 600 }}>ej rum</span>}
+                                    <span style={{ fontSize: 10, color: methodColor, fontWeight: 700 }}>{method}</span>
+                                    {e.checkedInAt && <span style={{ fontSize: 10, color: "#94a3b8" }}>In {fmtClock(e.checkedInAt)}</span>}
+                                    {e.checkedOutAt && <span style={{ fontSize: 10, color: "#94a3b8" }}>Ut {fmtClock(e.checkedOutAt)}</span>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── ATTENDANCE TAB ── */}
       {tab === "attendance" && (
@@ -1755,7 +1986,9 @@ function ParentView({ parent, allChildren, setAllChildren }) {
 
   const handleParentCheckout = () => {
     if (!foundChild) return;
-    setAllChildren((prev) => prev.map((c) => c.id === foundChild.id ? { ...c, status: "gått_hem", checkedOutAt: Date.now(), room: null, updatedAt: Date.now(), fritidsKronor: (c.fritidsKronor || 0) + 1 } : c));
+    const now = Date.now();
+    setAllChildren((prev) => prev.map((c) => c.id === foundChild.id ? { ...c, status: "gått_hem", checkedOutAt: now, room: null, updatedAt: now, fritidsKronor: (c.fritidsKronor || 0) + 1 } : c));
+    recordHistory(foundChild.id, foundChild.name, foundChild.group, { checkedOut: true, checkedOutAt: now, checkoutMethod: "parent" });
     setConfirmCheckout(false);
   };
 
@@ -2134,6 +2367,39 @@ function FritidsApp() {
       dbRef.current.set(obj);
       return next;
     });
+  }, []);
+
+  // ── Auto-utcheckning kl 19:00 ──
+  const autoCheckoutDone = useRef(new Set());
+  useEffect(() => {
+    const checkAuto = () => {
+      const now = new Date();
+      const hh = now.getHours();
+      const dateKey = todayStr();
+      // Kl 19:00 eller senare → checka ut alla som fortfarande är incheckade
+      if (hh >= 19 && !autoCheckoutDone.current.has(dateKey)) {
+        autoCheckoutDone.current.add(dateKey);
+        const ts = Date.now();
+        setAllChildrenLocal((prev) => {
+          const stillIn = prev.filter(c => c.status === "incheckad");
+          if (stillIn.length === 0) return prev;
+          const next = prev.map(c => {
+            if (c.status !== "incheckad") return c;
+            // Spara historik: auto-utcheckad
+            recordHistory(c.id, c.name, c.group, { checkedOut: true, checkedOutAt: ts, checkoutMethod: "auto", autoCheckout: true });
+            return { ...c, status: "gått_hem", checkedOutAt: ts, room: null, updatedAt: ts };
+          });
+          // Skriv till Firebase
+          const obj = {};
+          next.forEach(c => { obj[c.id] = c; });
+          dbRef.current.set(obj);
+          return next;
+        });
+      }
+    };
+    checkAuto(); // Kör direkt
+    const timer = setInterval(checkAuto, 60000); // Kolla varje minut
+    return () => clearInterval(timer);
   }, []);
 
   const handleLogin = ({ role, user }) => setSession({ role, user });
